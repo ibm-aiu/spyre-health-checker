@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+option go_package = "ibm.com/vitals/spyre.healthpb";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// SpyreHealthService provides the necessary endpoints to:
+// - Get the list of IBM Spyre Devices present on the host and their state
+service SpyreHealthService {
+    // RegisterForSpyreDevicesEvents returns a stream of Devices messages on the change of state of
+    // the devices present in on the nodes
+    rpc RegisterForSpyreDevicesEvents(google.protobuf.Empty) returns (stream Devices);
+}
+
+// Device defines an AIU device with its ID (PCI buses address),
+// type (VF or PF), state and manager process id.
+message Device {
+    DeviceID deviceID        = 1;  // The ID of the device
+    DEVICE_TYPE deviceType   = 2;  // The type of device
+    DEVICE_STATE deviceState = 3;  // The device state
+    int64 managerProcessID   = 4;  // Unix process id of the manager process
+    google.protobuf.Timestamp updateTimestamp = 5;  // The last state update timestamp
+}
+
+// Devices defines a collection of devices
+message Devices {
+    repeated Device devices = 1;
+}
+
+// DeviceID defines the device id (pci address)
+message DeviceID {
+    string PCIAddress = 1;
+}
+
+// DEVICE_TYPE defines the device type
+enum DEVICE_TYPE {
+    DEVICE_TYPE_UNSPECIFIED = 0;  // Reserving message ID 0
+    VF                      = 1;  // A VF device
+    PF                      = 2;  // A PF device
+}
+
+// DEVICE_STATE defines the device state
+enum DEVICE_STATE {
+    DEVICE_STATE_UNSPECIFIED = 0;  // Reserving message ID 0
+    OFFLINE                  = 1;  // The device is in offline state, it has not been booted or it
+                                   // has been shutdown
+    BOOTING = 2;                   // The device is in the booting (starting) state, with the
+                                   // initialization being complete
+    SHUTTING_DOWN       = 3;       // The device is in the process of shutting down
+    ONLINE              = 4;       // The device initialization is complete
+    RUNNING_DIAGNOSTICS = 5;       // The device is a running diagnostics
+    IN_ERROR            = 6;       // The device is a non-running state
+}
