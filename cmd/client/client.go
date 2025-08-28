@@ -7,10 +7,10 @@ import (
 	"log"
 	"time"
 
+	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
-	pb "ibm.com/vitals/pkg/proto/spyre_health"
 )
 
 var (
@@ -25,7 +25,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("fail to dial: %v", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	client := pb.NewSpyreHealthServiceClient(conn)
 
@@ -35,7 +35,8 @@ func main() {
 	stream, err := client.RegisterForSpyreDevicesEvents(ctx, &emptypb.Empty{})
 
 	if err != nil {
-		log.Fatalf("client.client.RegisterForSpyreDevicesEvents failed: %v", err)
+		cancel()
+		log.Fatalf("client.client.RegisterForSpyreDevicesEvents failed: %v", err) // nolint:gocritic
 	}
 
 	for {
@@ -44,7 +45,8 @@ func main() {
 			break
 		}
 		if err != nil {
-			log.Fatalf("client.RegisterForSpyreDevicesEvents failed: %v", err)
+			cancel()
+			log.Fatalf("client.RegisterForSpyreDevicesEvents failed: %v", err) // nolint:gocritic
 		}
 		log.Println("Devices:\n", deviceList.Devices)
 	}

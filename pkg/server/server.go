@@ -1,9 +1,9 @@
-package spyrehealthserver
+package server
 
 import (
 	"github.com/golang/glog"
+	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"google.golang.org/protobuf/types/known/emptypb"
-	pb "ibm.com/vitals/pkg/proto/spyre_health"
 )
 
 type SimplifiedDevice struct {
@@ -45,7 +45,8 @@ func NewServer() *healthServer {
 
 }
 
-func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty, stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsServer) error {
+func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
+	stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsServer) error {
 	glog.V(1).Infof("[Server] Got a request")
 	devices := pb.Devices{
 		Devices: s.deviceList,
