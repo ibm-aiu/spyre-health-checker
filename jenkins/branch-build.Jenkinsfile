@@ -1,6 +1,6 @@
 pipeline {
     agent {
-        label 'taas_image_with_docker_aiu_operator'
+        label 'taas_image_with_docker'
     }
     options {
         ansiColor('xterm')
@@ -8,7 +8,6 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds(abortPrevious: true)
         timeout(time: 25, unit: 'HOURS')
-        parallelsAlwaysFailFast()
     }
     environment {
         SLACK_INCOMING_WEBHOOK = credentials('aiu.operator.slack.api.credential')
@@ -78,37 +77,94 @@ pipeline {
                         '''
                     }
                 }
-                stage('Run docker image build') {
-                    steps {
-                        script {
-                            BUILD_TYPE=sh(returnStdout: true, script: './hack/get-build-type.bash').trim()
-                            env.DOCKER_GO_BUILD_FLAGS= "-p 4"
-                            sh '''
-                            #!/bin/bash -e
-                            git config --global --unset "url.https://taas-github-ibm-cache.swg-devops.com/.insteadof" || true
-                            git config --global url."https://x-access-token:${GH_CREDENTIALS_PSW}@github.ibm.com/".insteadOf "https://github.ibm.com/"
-                            '''
-                            if (BUILD_TYPE == "pr") {
-                                // for PR build types only build the amd64 image
+                stage('Build images for each CPU arch') {
+                    parallel {
+                        stage('Build amd64 images') {
+                            steps {
                                 sh '''
-                                #!/bin/bash -e
-                                make print-DOCKER_BUILD_OPTS
-                                make docker-build-push
-                                '''
-                            } else {
-                                // all other build types build the multi-arch image
-                                sh '''
-                                #!/bin/bash -e
-                                make print-DOCKER_BUILD_OPTS
-                                make docker-build-pushx
+                                make docker-build-amd64 docker-push-amd64
                                 '''
                             }
+                        }
+                        stage('Build s390x(IBM Z) images') {
+                            steps {
+                                script {
+                                    build job: 'aiu-operator-pipelines/spyre-health-checker-image-s390x',
+                                        parameters: [
+                                            string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}")
+                                    ]
+                                }
+                            }
+                        }
+                        stage('Build power images') {
+                            steps {
+                                script {
+                                    build job: 'aiu-operator-pipelines/spyre-health-checker-image-build-power',
+                                        parameters: [
+                                            string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+                                            string(name: 'GOLANG_VERSION',  value: 'v1.24')
+                                        ]
+                                }
+                            }
+                        }
+                    }
+                }
+                stage('Collect images into a manifest') {
+                    steps {
+                        sh 'make docker-build-manifest docker-push-manifest'
+                    }
+                }
+            }
+        }
+        /* TODO: enable e2e tests when the operator builds have been updated to
+        accept the component and also be upgraded to golang 1.24
 
+        stage ('Run e2e test') {
+            when {
+                not {
+                    anyOf {
+                        branch comparator: 'REGEXP', pattern: '^PR-\\d+$';
+                        branch comparator: 'REGEXP', pattern: '^release_[0-9]+(\\_[0-9]+)+$';
+                        branch comparator: 'REGEXP', pattern: '^release_v[0-9]+(\\.[0-9]+)+$';
+                        branch comparator: 'REGEXP', pattern: '^v[0-9](\\.[0-9]+)+-rc\\.[0-9]+$';
+                    }
+                }
+            }
+            parallel {
+                stage('Run e2e test for amd64') {
+                    steps {
+                        build job: 'aiu-operator-pipelines/crc-aiu-operator-end-to-end-test',
+                            parameters: [
+                                string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+                                string(name: 'GOLANG_VERSION',  value: 'v1.23'),
+                            ]
+                    }
+                }
+                stage('Run e2e test for s390x') {
+                    steps {
+                        script {
+                            build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-s390x',
+                                parameters: [
+                                    string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+                                    string(name: 'GOLANG_VERSION',  value: 'v1.23'),
+                                ]
+                        }
+                    }
+                }
+                stage('Run e2e test for power') {
+                    steps {
+                        script {
+                            build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-ppc64le',
+                                parameters: [
+                                    string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+                                    string(name: 'GOLANG_VERSION',  value: 'v1.23'),
+                                ]
                         }
                     }
                 }
             }
         }
+        */
         stage('Create GH release') {
             when {
                 anyOf {
