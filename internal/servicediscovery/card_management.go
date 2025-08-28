@@ -1,7 +1,7 @@
 package servicediscovery
 
 import (
-	pb "ibm.com/vitals/pkg/proto/spyre_health"
+	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 )
 
 type CardManagement struct {

@@ -9,11 +9,11 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
+	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
+	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
+	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
+	server "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/server"
 	"google.golang.org/grpc"
-	healthchecks "ibm.com/vitals/pkg/healthChecks"
-	pb "ibm.com/vitals/pkg/proto/spyre_health"
-	spyrehealthserver "ibm.com/vitals/pkg/spyreHealthServer"
-	utils "ibm.com/vitals/pkg/utils"
 )
 
 var (
@@ -26,12 +26,24 @@ var (
 func main() {
 	flag.Parse()
 
-	flag.Set("alsologtostderr", "true")
-	if *logFile != "" {
-		flag.Set("log_file", *logFile)
+	if err := flag.Set("alsologtostderr", "true"); err != nil {
+		glog.Errorf("Error set alsologtostderr: ", err)
+		os.Exit(1)
 	}
-	flag.Set("v", *v)
-	flag.Set("logtostderr", "false")
+	if *logFile != "" {
+		if err := flag.Set("log_file", *logFile); err != nil {
+			glog.Errorf("Error set log_file: ", err)
+			os.Exit(1)
+		}
+	}
+	if err := flag.Set("v", *v); err != nil {
+		glog.Errorf("Error set v: ", err)
+		os.Exit(1)
+	}
+	if err := flag.Set("logtostderr", "false"); err != nil {
+		glog.Errorf("Error set logtostderr: ", err)
+		os.Exit(1)
+	}
 
 	glog.V(1).Infof("loglevel: debug")
 	glog.V(1).Infof("Starting gRPC server")
@@ -42,9 +54,9 @@ func main() {
 	}
 	grpcServer := grpc.NewServer()
 
-	s := spyrehealthserver.NewServer()
+	s := server.NewServer()
 	pb.RegisterSpyreHealthServiceServer(grpcServer, s)
-	go grpcServer.Serve(lis)
+	go grpcServer.Serve(lis) //nolint:errcheck
 
 	glog.V(1).Infof("Starting timer for periodic checks")
 	// Parse the repeat and invasive intervals to durations
@@ -57,15 +69,11 @@ func main() {
 	reg := prometheus.NewRegistry()
 	utils.InitMetrics(reg)
 
-	vitals := healthchecks.Vitals{}
+	vitals := healthcheck.Vitals{}
 
 	periodicChecksTicker := time.NewTicker(timer)
 	defer periodicChecksTicker.Stop()
-	for {
-		select {
-		case <-periodicChecksTicker.C:
-			vitals.RunLSPCI()
-		}
+	for range periodicChecksTicker.C {
+		vitals.RunLSPCI()
 	}
-
 }

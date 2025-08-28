@@ -1,4 +1,4 @@
-module ibm.com/vitals
+module github.ibm.com/ai-chip-toolchain/spyre-health-checker
 
 go 1.24.4
 
