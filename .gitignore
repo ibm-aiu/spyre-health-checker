@@ -26,3 +26,6 @@ go.work.sum
 
 # tools
 bin
+
+# Generated files
+unittest-report.json

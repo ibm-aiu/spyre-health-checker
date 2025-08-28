@@ -143,8 +143,8 @@ protoc-gen: protoc-gen-install
 ##@ Test targets
 
 .PHONY: test
-test: envtest ginkgo vendor fmt vet ## Run unit tests
-	$(CGO_FLAGS) KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GINKGO) -r --cover --coverprofile=coverage-report.out --race --json-report unittest-report.json -v
+test: envtest ginkgo vendor checks ## Run unit tests
+	$(CGO_FLAGS) $(GINKGO) -r --cover --coverprofile=coverage-report.out --race --json-report unittest-report.json -v ./...
 	./hack/convert-to-markdown.sh unittest-report "Unit Tests"
 
 ##@ Development Targets
@@ -168,6 +168,9 @@ build: vendor ## Build local binary
 .PHONY: lint
 lint: golangci-lint vendor  ## Run golangci-lint against code.
 	$(CGO_FLAGS) $(GOLANGCI_LINT) run --sort-results --config $(REPO_ROOT)/.golangci.yaml --go $(GOLANG_VERSION)
+
+.PHONY: checks
+checks: fmt vet lint # Run fmt vet lint
 
 .PHONY: lint-fix
 lint-fix: golangci-lint vendor ## Run golangci-lint against code.
