@@ -29,3 +29,6 @@ bin
 
 # Generated files
 unittest-report.json
+
+# IDE files
+.vscode

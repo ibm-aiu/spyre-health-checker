@@ -217,7 +217,7 @@ docker-build-push: docker-build docker-push ## Build and push the spyre health c
 .PHONY: docker-build-amd64
 docker-build-amd64: vendor ## Build amd64 spyre health checker image
 ifeq ($(DOCKER),docker)
-	docker buildx build --platform linux/amd64 \
+	docker build --platform linux/amd64 \
 		--push --pull  --no-cache \
 		$(DOCKER_BUILD_OPTS) \
 		--tag $(IMAGE)-amd64 \
