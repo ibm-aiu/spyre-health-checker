@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+spyre-health-checker
 
 # Test binary, built with `go test -c`
 *.test

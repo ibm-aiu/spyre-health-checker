@@ -2,8 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"net"
 	"os"
 	"time"
 
@@ -11,13 +9,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
-	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	server "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/server"
-	"google.golang.org/grpc"
 )
 
 var (
-	port    = flag.Int("port", 50051, "The server port")
+	socket  = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
 	timer   = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
 	logFile = flag.String("logfile", "", "File where to save all the events")
 	v       = flag.String("loglevel", "1", "Log level")
@@ -46,17 +42,10 @@ func main() {
 	}
 
 	glog.V(1).Infof("loglevel: debug")
-	glog.V(1).Infof("Starting gRPC server")
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
-	if err != nil {
-		glog.Errorf("failed to listen: %v", err)
-
-	}
-	grpcServer := grpc.NewServer()
-
 	s := server.NewServer()
-	pb.RegisterSpyreHealthServiceServer(grpcServer, s)
-	go grpcServer.Serve(lis) //nolint:errcheck
+
+	glog.V(1).Infof("Starting gRPC server")
+	s.StartGRPCServer(*socket)
 
 	glog.V(1).Infof("Starting timer for periodic checks")
 	// Parse the repeat and invasive intervals to durations

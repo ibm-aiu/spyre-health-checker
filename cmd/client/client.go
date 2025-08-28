@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
@@ -14,14 +15,23 @@ import (
 )
 
 var (
-	serverAddr = flag.String("addr", "localhost:50051", "The server address in the format of host:port")
+	socket = flag.String("socket", "checker.sock", "The unix socket for health checker")
 )
 
 func main() {
 	flag.Parse()
+
+	var sock string
+	if strings.Contains(*socket, "/") {
+		sock = "unix://" + *socket
+	} else {
+		sock = "unix:" + *socket
+	}
+	log.Printf("using socket %s", *socket)
+
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	conn, err := grpc.NewClient(*serverAddr, opts...)
+	conn, err := grpc.NewClient(sock, opts...)
 	if err != nil {
 		log.Fatalf("fail to dial: %v", err)
 	}
