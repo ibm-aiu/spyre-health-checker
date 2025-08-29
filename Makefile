@@ -50,14 +50,12 @@ GOLANGCI_LINT	?= $(LOCALBIN)/golangci-lint
 GOVULCHECK		?= $(LOCALBIN)/govulncheck
 GINKGO			?= $(LOCALBIN)/ginkgo
 YQ				?= $(LOCALBIN)/yq
-PROTOC_GEN		?= $(LOCALBIN)/protoc
 
 ## Tool Versions
 ENVTEST_K8S_VERSION			?= 1.31
 GOLANGCI_LINT_VERSION 		?= 1.64.8
 GINKGO_VERSION 				?= v2.25.1
 YQ_VERSION 					?= v4.29.2
-PROTOC_GEN_VERSION			?= v1.5.1
 
 # Shamesly copied from: https://github.com/opendatahub-io/opendatahub-operator/blob/a08c94a226585e43387ad263e2653c0fd43130f1/Makefile#L132C1-L139C1
 define go-mod-version
@@ -131,14 +129,9 @@ $(GOVULCHECK): $(LOCALBIN)
 
 ##@ protoc targets
 
-.PHONY: protoc-gen-install
-protoc-gen-install: $(PROTOC_GEN) ## Download and install protoc
-$(PROTOC_GEN): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_VERSION)
-
 .PHONY: protoc-gen
-protoc-gen: protoc-gen-install
-	protoc --go_out=. --go-grpc_out=. pkg/proto/spyre_health/spyre_health.proto
+protoc-gen:
+	go tool buf generate
 
 ##@ Test targets
 
