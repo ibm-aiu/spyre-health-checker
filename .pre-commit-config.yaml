@@ -1,12 +1,21 @@
 default_install_hook_types:
 - pre-commit
+- commit-msg
 default_stages:
 - pre-commit
 fail_fast: true
 exclude: boilerplate\..*|.*\.gen\..*|.*\.gotmpl$
 repos:
+- repo: https://github.com/jorisroovers/gitlint
+  rev: v0.19.1
+  hooks:
+  - id: gitlint
+    language: python
+    entry: gitlint
+    args: [--staged, --msg-filename]
+    stages: [commit-msg]
 - repo: https://github.com/tekwizely/pre-commit-golang
-  rev: v1.0.0-rc.1
+  rev: v1.0.0-rc.2
   hooks:
   - id: go-fmt
   - id: go-mod-tidy
@@ -28,7 +37,7 @@ repos:
   - id: yamlfmt
     args: ["-dstar", "-conf=.yamlfmt"]
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v5.0.0
+  rev: v6.0.0
   hooks:
   - id: check-merge-conflict
   - id: check-executables-have-shebangs
