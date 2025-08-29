@@ -2,7 +2,8 @@
 
 Health Checker for AIU Spyre Cards
 
-NOTE: this README is temporary, just to show this initial setup.
+> [!NOTE]
+> This README is temporary, just to show this initial setup.
 
 ## Simple setup
 
@@ -11,8 +12,7 @@ This client-server with gRPC streaming, is the simplest implementation of what c
 The proto file comes from there. It can be edited and built via
 
 ```bash
-cd pkg/proto/spyre_health
-protoc --go_out=. --go_opt=paths=source_relative     --go-grpc_out=. --go-grpc_opt=paths=source_relative     spyre_health.proto
+make protoc-gen
 ```
 
 This project has a client and a server.
@@ -27,13 +27,14 @@ in the format h-m-s, for instance `5s` or `1h40m`.
 To build the server:
 
 ```bash
-go build -o spyre-health-checker ./pkg/main/main.go
+go build -o spyre-health-checker ./cmd/health-checker/main.go
 ```
 
 to run:
 
 ```bash
-./spyre-health-checker --timer 5s
+rm -f checker.sock # remove previously generated socket if exists
+./spyre-health-checker --timer 5s --socket checker.sock
 ```
 
 The current output looks like this
@@ -56,13 +57,11 @@ I0826 21:32:33.351071   24618 healthcheck.go:9] Running lspci
 To run a simple client, in another terminal:
 
 ```bash
-cd client
-go run client.go
+go run cmd/client/client.go --socket=$(pwd)/checker.sock
 ```
 
 The client will receive the following dummy devices:
 
-```bash
-2025/08/19 15:29:32 Devices:
- [deviceID:{PCIAddress:"00"}  deviceType:PF  deviceState:ONLINE deviceID:{PCIAddress:"01"}  deviceType:PF  deviceState:IN_ERROR]
-```
+> 2025/08/28 18:24:30 using socket /Users/aa404681/Documents/internal_ws/aiu/spyre-health-checker/checker.sock
+> 2025/08/28 18:24:30 Devices:
+ [deviceID:{PCIAddress:"0000:1a:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:1c:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:1d:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:1e:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:3d:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:3f:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:40:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:41:00.0"} deviceType:PF deviceState:IN_ERROR]
