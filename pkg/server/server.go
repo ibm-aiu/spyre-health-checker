@@ -21,6 +21,7 @@ type healthServer struct {
 	mu sync.RWMutex
 	pb.UnimplementedSpyreHealthServiceServer
 	updateQueue chan []types.DeviceState
+	socket      string
 }
 
 func NewServer() *healthServer {
@@ -30,7 +31,7 @@ func NewServer() *healthServer {
 	return &s
 }
 
-func (s *healthServer) StartGRPCServer(socket string) {
+func (s *healthServer) StartGRPCServer(socket string) error {
 	if err := safeRemove(socket); err != nil {
 		glog.Errorf("failed to remove present %s: %v", socket, err)
 	}
@@ -38,16 +39,22 @@ func (s *healthServer) StartGRPCServer(socket string) {
 	lis, err := net.Listen("unix", socket)
 	if err != nil {
 		glog.Errorf("failed to listen: %v", err)
-
+		return err
 	}
 	grpcServer := grpc.NewServer()
 	pb.RegisterSpyreHealthServiceServer(grpcServer, s)
-	go grpcServer.Serve(lis) //nolint:errcheck
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			glog.Errorf("failed to serve: %v", err)
+		}
+	}()
+	s.socket = socket
+	return nil
 }
 
 func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 	stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsServer) error {
-	glog.V(1).Infof("[Server] Got a request")
+	glog.V(1).Infof("register health stream")
 	devices := pb.Devices{
 		Devices: s.getPbDevices(pseudoDeviceHealths),
 	}
@@ -64,6 +71,13 @@ func (s *healthServer) UpdateHealths(states []types.DeviceState) {
 	s.updateQueue <- states
 }
 
+func (s *healthServer) Stop() {
+	close(s.updateQueue)
+	if err := safeRemove(s.socket); err != nil {
+		glog.Errorf("failed to remove present %s: %v", s.socket, err)
+	}
+}
+
 func (s *healthServer) send(stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsServer) {
 	for {
 		states, ok := <-s.updateQueue
@@ -78,10 +92,14 @@ func (s *healthServer) send(stream pb.SpyreHealthService_RegisterForSpyreDevices
 			glog.V(1).Infof("update channel is not OK")
 			return
 		}
+		glog.V(1).Infof("send %v", states)
 	}
 }
 
 func safeRemove(path string) error {
+	if path == "" {
+		return nil
+	}
 	err := os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err

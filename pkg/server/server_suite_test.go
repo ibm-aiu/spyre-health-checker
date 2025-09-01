@@ -96,5 +96,6 @@ var _ = AfterSuite(func() {
 
 func startServer() {
 	s := NewServer()
-	s.StartGRPCServer(TestSocket)
+	err := s.StartGRPCServer(TestSocket)
+	Expect(err).To(BeNil())
 }
