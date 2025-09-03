@@ -45,15 +45,19 @@ func main() {
 	s := server.NewServer()
 
 	glog.V(1).Infof("Starting gRPC server")
-	s.StartGRPCServer(*socket)
+	if err := s.StartGRPCServer(*socket); err != nil {
+		glog.Fatal(err)
+	}
 
 	glog.V(1).Infof("Starting timer for periodic checks")
 	// Parse the repeat and invasive intervals to durations
 	timer, err := utils.ParseInterval(*timer)
 	if err != nil {
 		glog.Errorf("Error parsing repeat interval: ", err)
+		s.Stop()
 		os.Exit(1)
 	}
+	defer s.Stop()
 
 	reg := prometheus.NewRegistry()
 	utils.InitMetrics(reg)
