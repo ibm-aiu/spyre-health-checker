@@ -145,6 +145,7 @@ pipeline {
             script {
                 sshRun("""
 		    echo "Cleaning up workspace" && \
+		    cd ${REPO_DIR} && \
                     make docker-remove-images && \
                     if pgrep -f "podman build" >/dev/null; then echo "WARNING: another build is in process, skipping cleanup"; else podman images --all --filter "dangling=true" -q | xargs -r podman rmi -f || true; fi && \
                     rm -rf /root/spyre-operator/${UNIQUE_WORKSPACE} || true
