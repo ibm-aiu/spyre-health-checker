@@ -6,7 +6,6 @@ pipeline {
     }
     parameters {
         string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Branch name to execute the image build from')
-        string(name: 'IBM_CLOUD_HOST', defaultValue: '158.176.7.10', description: 'IBM Cloud VM hostname')
     }
     options {
         ansiColor('xterm')
@@ -16,27 +15,34 @@ pipeline {
         parallelsAlwaysFailFast()
     }
     environment {
-        JUMP_HOST   = credentials('Z-jump-host-ip')
-        TARGET_HOST = credentials('Z-target-host-ip')
         UNIQUE_WORKSPACE = "spyre-operator-${BUILD_ID}"
         REPO_DIR = "/root/spyre-operator/${UNIQUE_WORKSPACE}/spyre-health-checker"
     }
     stages {
         stage('Define sshRun helper') {
             steps {
-                script {
-                    sshRun = { cmd ->
+            	withCredentials([file(credentialsId: 's390x_POK_machine_ssh_config', variable: 'SSH_CFG')]) {
+                    script {
                         sh """
-                            ssh -A -J ocpai@${env.JUMP_HOST} root@${env.TARGET_HOST} '${cmd}'
+                            mkdir -p \$HOME/.ssh
+                            cp "$SSH_CFG" \$HOME/.ssh/config
+                            chmod 600 \$HOME/.ssh/config
                         """
+
+                        sshRun = { cmd ->
+                            sh """#!/bin/bash -e
+                            ssh -F \$HOME/.ssh/config target '${cmd}'
+                            """
+                        }
                     }
                 }
             }
         }
+
         stage('Validate SSH Connection') {
             steps {
                 script {
-                    echo "SSH Connection Successful to TARGET_HOST=${env.TARGET_HOST} via JUMP_HOST=${env.JUMP_HOST}"
+                    echo "SSH Connection Successful to TARGET_HOSTET"
                 }
             }
         }
@@ -137,8 +143,9 @@ pipeline {
     post {
         always {
             script {
-                echo "Cleaning up workspace"
                 sshRun("""
+                    echo "Cleaning up workspace" && \
+                    cd ${REPO_DIR} && \
                     make docker-remove-images && \
                     if pgrep -f "podman build" >/dev/null; then echo "WARNING: another build is in process, skipping cleanup"; else podman images --all --filter "dangling=true" -q | xargs -r podman rmi -f || true; fi && \
                     rm -rf /root/spyre-operator/${UNIQUE_WORKSPACE} || true
