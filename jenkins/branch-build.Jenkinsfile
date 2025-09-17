@@ -1,6 +1,6 @@
 pipeline {
     agent {
-        label 'taas_image_with_docker'
+        label 'taas_image_with_docker_aiu_operator'
     }
     options {
         ansiColor('xterm')
