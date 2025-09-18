@@ -336,6 +336,75 @@ docker-remove-images: ## Remove images from build host
 	$(DOCKER) manifest rm $(IMAGE) || true
 	$(DOCKER) rmi -f $(IMAGE)-ppc64le $(IMAGE)-amd64 $(IMAGE)-s390x || true
 
+##twistlock scan 
+
+TT_URL := https://na.artifactory.swg-devops.com/artifactory/css-ets-scs-consec-team-public-generic-local/Twistlock%20Executable/tt_latest.zip
+TT_DIR := $(LOCALBIN)/tt_*/linux_x86_64
+TT_BIN := $(TT_DIR)/tt
+W3_TT_URL := https://w3twistlock.sos.ibm.com
+
+.PHONY: tt-install
+tt-install: $(TT_BIN) ## Download and install Twistlock scanner (tt)
+
+$(TT_BIN): $(LOCALBIN)
+	@echo "Downloading tt for Linux x86_64..."
+	curl -H "Authorization: Bearer $(ARTIFACTORY_TOKEN)" \
+	     --silent --fail --location "$(TT_URL)" \
+	     --output $(LOCALBIN)/tt_latest.zip
+	unzip -qo $(LOCALBIN)/tt_latest.zip -d $(LOCALBIN) > /dev/null
+	chmod 755 $(TT_BIN)
+	$(TT_BIN) check-dependencies > /dev/null
+
+##Performs a Twistlock scan on the amd64 image
+.PHONY: tt-scan-amd64
+tt-scan-amd64: ## Scan the device plugin image for the amd64 platform
+	@echo "Scanning amd64 image: $(IMAGE)-amd64"
+	mkdir -pv ./twistlock-scan-output/amd64
+ifneq (pr , $(BUILD_TYPE))
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/amd64 --output-file image-scan $(IMAGE)-amd64
+else
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/amd64 --has-fix-filter Y --output-file image-scan $(IMAGE)-amd64
+endif
+	@echo "Scan results:"
+	@echo "------------------------------------------------"
+	cat ./twistlock-scan-output/amd64/image-scan.results.csv
+	@echo "------------------------------------------------"
+
+##Performs a Twistlock scan on the s390x image
+
+.PHONY: tt-scan-s390x
+tt-scan-s390x:
+	@echo "Scanning s390x image: $(IMAGE)-s390x"
+	mkdir -pv ./twistlock-scan-output/s390x
+ifneq (pr , $(BUILD_TYPE))
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/s390x --output-file image-scan $(IMAGE)-s390x
+else
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/s390x --has-fix-filter Y --output-file image-scan $(IMAGE)-s390x
+endif
+	@echo "Scan results:"
+	@echo "------------------------------------------------"
+	cat ./twistlock-scan-output/s390x/image-scan.results.csv
+	@echo "------------------------------------------------"
+
+##Performs a Twistlock scan on the power image
+.PHONY: tt-scan-power
+tt-scan-power: ## Scan the device plugin image for the ppc64le platform
+	@echo "Scanning power image: $(IMAGE)-ppc64le"
+	mkdir -pv ./twistlock-scan-output/ppc64le
+ifneq (pr , $(BUILD_TYPE))
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/ppc64le --output-file image-scan $(IMAGE)-ppc64le
+else
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/ppc64le --has-fix-filter Y --output-file image-scan $(IMAGE)-ppc64le
+endif
+	@echo "Scan results:"
+	@echo "------------------------------------------------"
+	cat ./twistlock-scan-output/ppc64le/image-scan.results.csv
+	@echo "------------------------------------------------"
+	
+.PHONY: tt-scan-all
+tt-scan-all: tt-scan-amd64 tt-scan-s390x tt-scan-power
+	@echo "All architectures scanned"
+
 ##@ Release targets
 
 .PHONY: echo-version
