@@ -357,7 +357,7 @@ $(TT_BIN): $(LOCALBIN)
 
 ##Performs a Twistlock scan on the amd64 image
 .PHONY: tt-scan-amd64
-tt-scan-amd64: ## Scan the device plugin image for the amd64 platform
+tt-scan-amd64: ## Scan the spyre-health-checker image for the amd64 platform
 	@echo "Scanning amd64 image: $(IMAGE)-amd64"
 	mkdir -pv ./twistlock-scan-output/amd64
 ifneq (pr , $(BUILD_TYPE))
@@ -373,7 +373,7 @@ endif
 ##Performs a Twistlock scan on the s390x image
 
 .PHONY: tt-scan-s390x
-tt-scan-s390x:
+tt-scan-s390x: ## Scan the spyre-health-checker image for the s390x platform
 	@echo "Scanning s390x image: $(IMAGE)-s390x"
 	mkdir -pv ./twistlock-scan-output/s390x
 ifneq (pr , $(BUILD_TYPE))
@@ -388,7 +388,7 @@ endif
 
 ##Performs a Twistlock scan on the power image
 .PHONY: tt-scan-power
-tt-scan-power: ## Scan the device plugin image for the ppc64le platform
+tt-scan-power: ## Scan the spyre-health-checker image for the ppc64le platform
 	@echo "Scanning power image: $(IMAGE)-ppc64le"
 	mkdir -pv ./twistlock-scan-output/ppc64le
 ifneq (pr , $(BUILD_TYPE))
