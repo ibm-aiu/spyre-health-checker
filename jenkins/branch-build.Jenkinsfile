@@ -165,6 +165,77 @@ pipeline {
             }
         }
         */
+        stage('Twistlock') {
+			when {
+				not {
+				   branch comparator: 'REGEXP', pattern: '^PR-\\d+$'
+				}
+			}
+			stages {
+				stage('Install Twistlock  Dependencies') {
+                    			steps {
+                        			sh '''
+                            			sudo apt-get update
+                            			sudo apt-get install -y unzip curl ca-certificates uuid-runtime
+                        			'''
+                    			}
+               			}
+				stage('Install Twistlock CLI') {
+					steps {
+						withCredentials([string(credentialsId: 'aiu.operator.artifactory.bearer.token', variable: 'ARTIFACTORY_TOKEN')]) {
+							sh 'make tt-install'
+						}
+					}
+				 }
+				 stage('Twistlock Scan') {
+					 parallel {
+						stage('Twistlock scan for amd64') {
+							steps {
+								/*
+								withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
+									string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY')]) {
+									sh '''
+											make tt-scan-amd64 \
+											TT_USER="${TW_USER}:${TW_PASS}" \
+											TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" \
+											TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
+										'''
+								}
+								*/
+								echo "Scanning for this architecture is not enabled."
+							}
+						}
+						stage('Twistlock scan for Scan s390x') {
+							steps {
+								withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
+									string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY'),
+  									string(credentialsId: 'twistlock-control-group', variable: 'TT_CONTROL_GROUP')]) {
+										sh '''  
+										make tt-scan-s390x  TT_USER="${TW_USER}:${TW_PASS}" TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
+										'''
+								}
+							}
+						}
+						stage('Twistlock scan for Scan ppc64le') {
+						   steps {
+								/*
+							   withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
+							   string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY') ]) {					                                         
+								sh ''' 
+									   make tt-scan-power \
+									   TT_USER="${TW_USER}:${TW_PASS}" \
+									   TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" \
+									   TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
+									'''
+								}
+								*/
+								echo "Scanning for this architecture is not enabled."
+							}  
+						}
+					}
+				}
+			}
+		}
         stage('Create GH release') {
             when {
                 anyOf {
