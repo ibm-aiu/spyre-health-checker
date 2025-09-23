@@ -450,12 +450,12 @@ release-tag-push: ## Create a release tag for branch
 	$(info BUILD_TYPE = $(BUILD_TYPE))
 ifeq (release , $(BUILD_TYPE))
 	git fetch origin --tags --quiet
-ifeq (, $(shell git rev-parse -q --verify "refs/tags/v$(VERSION)"))
+ifeq (, $(shell git rev-parse -q --verify "refs/tags/spyre-v$(VERSION)"))
 	$(info Creating tag 'v$(VERSION)')
-	git tag v$(VERSION) --annotate -m "Created  release v$(VERSION)"
-	git push origin tag v$(VERSION)
+	git tag spyre-v$(VERSION) --annotate -m "Created tag spyre-v$(VERSION)"
+	git push origin tag spyre-v$(VERSION)
 else
-	$(error Tag v$(VERSION) already exists)
+	$(error Tag spyre-v$(VERSION) already exists)
 endif
 else
 	$(error release-tag-push can be executed only for a release build)
@@ -466,7 +466,7 @@ create-gh-release: ## Create a GitHub release for the tag and branch
 	$(info BUILD_TYPE = $(BUILD_TYPE))
 ifeq (release , $(BUILD_TYPE))
 	git fetch origin --tags --quiet
-	gh release create --verify-tag --latest --generate-notes v$(VERSION)
+	gh release create --verify-tag --latest --generate-notes spyre-v$(VERSION)
 else
 	$(error create-gh-release can be executed only for a release build)
 endif
