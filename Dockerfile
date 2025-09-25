@@ -48,3 +48,4 @@ COPY --from=builder /build/spyre-health-checker /usr/bin/spyre-health-checker
 COPY --from=builder /tmp/ubi-micro/ /
 
 ENTRYPOINT [ "/usr/bin/spyre-health-checker" ]
+HEALTHCHECK NONE
