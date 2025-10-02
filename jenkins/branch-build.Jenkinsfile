@@ -101,8 +101,7 @@ pipeline {
 								script {
 									build job: 'aiu-operator-pipelines/spyre-health-checker-image-build-power',
 										parameters: [
-											string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
-											string(name: 'GOLANG_VERSION',  value: 'v1.24')
+											string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}")
 										]
 								}
 							}
@@ -173,13 +172,13 @@ pipeline {
 			}
 			stages {
 				stage('Install Twistlock  Dependencies') {
-								steps {
-									sh '''
-										sudo apt-get update
-										sudo apt-get install -y unzip curl ca-certificates uuid-runtime
-									'''
-								}
-			   			}
+					steps {
+						sh '''
+							sudo apt-get update
+							sudo apt-get install -y unzip curl ca-certificates uuid-runtime
+						'''
+					}
+			   	}
 				stage('Install Twistlock CLI') {
 					steps {
 						withCredentials([string(credentialsId: 'aiu.operator.artifactory.bearer.token', variable: 'ARTIFACTORY_TOKEN')]) {

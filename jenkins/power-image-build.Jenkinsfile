@@ -80,7 +80,7 @@ pipeline {
 			}
 		}
 		cleanup {
-			cleanWs disableDeferredWipeout: true, notFailBuild: true
+			cleanWs disableDeferredWipeout: true, notFailBuild: true, cleanWhenNotBuilt: false, deleteDirs: true
 		}
 	}
 }

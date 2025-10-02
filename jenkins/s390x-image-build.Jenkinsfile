@@ -1,6 +1,6 @@
 pipeline {
 	agent {
-		label 'm42lp52-boe'
+		label 's390x-operator-build'
 	}
 	parameters {
 		string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Branch name to execute the image build from')
@@ -77,7 +77,7 @@ pipeline {
 			}
 		}
 		cleanup {
-			cleanWs disableDeferredWipeout: true, notFailBuild: true
+			cleanWs disableDeferredWipeout: true, notFailBuild: true, cleanWhenNotBuilt: false, deleteDirs: true
 		}
 	}
 }
