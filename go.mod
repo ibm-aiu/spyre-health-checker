@@ -1,6 +1,6 @@
 module github.ibm.com/ai-chip-toolchain/spyre-health-checker
 
-go 1.24.4
+go 1.24.6
 
 require (
 	github.com/golang/glog v1.2.5

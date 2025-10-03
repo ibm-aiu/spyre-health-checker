@@ -14,7 +14,7 @@ pipeline {
 	}
 	environment {
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
-		GOTOOLCHAIN = 'go1.24.4'
+		GOTOOLCHAIN = 'go1.24.6'
 	}
 	stages {
 		stage('Checkout branch') {
