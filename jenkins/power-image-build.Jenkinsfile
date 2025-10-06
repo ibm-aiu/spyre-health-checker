@@ -15,6 +15,7 @@ pipeline {
 	environment {
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
 		PATH = "${env.PATH}:/var/jenkins-home/go/bin"
+		GOTOOLCHAIN = 'go1.24.6'
 	}
 	stages {
 		stage('Checkout branch') {

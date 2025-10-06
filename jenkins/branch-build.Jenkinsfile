@@ -13,7 +13,7 @@ pipeline {
 		SLACK_INCOMING_WEBHOOK = credentials('aiu.operator.slack.api.credential')
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
 		GOPRIVATE='github.ibm.com/ai-chip-toolchain/*'
-		GOTOOLCHAIN='go1.24.4'
+		GOTOOLCHAIN='go1.24.6'
 	}
 	stages {
 		stage('Checkout branch') {
