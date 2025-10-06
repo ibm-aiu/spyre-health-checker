@@ -221,6 +221,7 @@ ifeq ($(DOCKER),docker)
 		--file $(DOCKERFILE) $(CURDIR)
 else
 	podman build --platform linux/amd64 \
+		--format docker \
 		$(DOCKER_BUILD_OPTS) \
 		--build-arg VERSION="$(VERSION)" \
 		--build-arg BUILD_FLAGS="$(DOCKER_GO_BUILD_FLAGS)" \
@@ -244,6 +245,7 @@ ifeq ($(DOCKER),docker)
 		--file $(DOCKERFILE) $(CURDIR)
 else
 	podman build --platform linux/s390x \
+		--format docker \
 		$(DOCKER_BUILD_OPTS) \
 		--build-arg VERSION="$(VERSION)" \
 		--build-arg BUILD_FLAGS="$(DOCKER_GO_BUILD_FLAGS)" \
@@ -266,6 +268,7 @@ ifeq ($(DOCKER),docker)
 		--file $(DOCKERFILE) $(CURDIR)
 else
 	podman build --platform linux/ppc64le \
+		--format docker \
 		$(DOCKER_BUILD_OPTS) \
 		--build-arg VERSION="$(VERSION)" \
 		--build-arg BUILDER_IMAGE="$(BUILDER_IMAGE)" \
