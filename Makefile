@@ -376,10 +376,12 @@ endif
 tt-scan-s390x: ## Scan the spyre-health-checker image for the s390x platform
 	@echo "Scanning s390x image: $(IMAGE)-s390x"
 	mkdir -pv ./twistlock-scan-output/s390x
-ifneq (pr , $(BUILD_TYPE))
+ifeq ($(BUILD_TYPE),pr)
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/s390x --has-fix-filter Y --output-file image-scan $(IMAGE)-s390x
+else ifeq ($(BUILD_TYPE),development)
 	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/s390x --output-file image-scan $(IMAGE)-s390x
 else
-	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/s390x --has-fix-filter Y --output-file image-scan $(IMAGE)-s390x
+	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype prod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/s390x --output-file image-scan $(IMAGE)-s390x
 endif
 	@echo "Scan results:"
 	@echo "------------------------------------------------"
@@ -467,6 +469,9 @@ create-gh-release: ## Create a GitHub release for the tag and branch
 ifeq (release , $(BUILD_TYPE))
 	git fetch origin --tags --quiet
 	gh release create --verify-tag --latest --generate-notes spyre-v$(VERSION)
+	@echo "Zipping Twistlock scan results for release..."
+	zip -r twistlock-scan-results.zip twistlock-scan-output/
+	gh release upload spyre-v$(VERSION) artifacts/twistlock-scan-results.zip#twistlock-scan-results.zip  --clobber
 else
 	$(error create-gh-release can be executed only for a release build)
 endif
