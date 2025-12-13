@@ -82,10 +82,11 @@ pipeline {
 						stage('Build amd64 images') {
 							steps {
 								sh '''
-								make docker-build-amd64 docker-push-amd64
+								make docker-build
 								'''
 							}
 						}
+						/* TODO re-enable mulit arch builds when they are necessary.
 						stage('Build s390x(IBM Z) images') {
 							steps {
 								script {
@@ -106,11 +107,12 @@ pipeline {
 								}
 							}
 						}
+						*/
 					}
 				}
 				stage('Collect images into a manifest') {
 					steps {
-						sh 'make docker-build-manifest docker-push-manifest'
+						sh 'make docker-build-push'
 					}
 				}
 			}
@@ -206,6 +208,7 @@ pipeline {
 						}
 						stage('Twistlock scan for Scan s390x') {
 							steps {
+								/* Enable when multi arch builds are complete
 								withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
 									string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY'),
   									string(credentialsId: 'twistlock-control-group', variable: 'TT_CONTROL_GROUP')]) {
@@ -213,6 +216,9 @@ pipeline {
 										make tt-scan-s390x  TT_USER="${TW_USER}:${TW_PASS}" TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
 										'''
 								}
+								*/
+								echo "Scanning for this architecture is not enabled."
+	
 							}
 						}
 						stage('Twistlock scan for Scan ppc64le') {
