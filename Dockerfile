@@ -33,6 +33,9 @@ RUN dnf --installroot=/tmp/ubi-micro \
 
 FROM registry.access.redhat.com/ubi9/ubi-micro:${BASE_UBI_IMAGE_TAG}
 
+# Switch to non-root user (UID 1001) with root group (GID 0)
+USER 1001:0
+
 ARG VERSION
 ARG RELEASE="N/A"
 
