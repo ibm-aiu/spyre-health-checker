@@ -21,6 +21,8 @@ import (
 
 var (
 	TestSocket = "checker.sock"
+
+	TestHealthServer *healthServer
 )
 
 type Client struct {
@@ -60,12 +62,19 @@ func (c *Client) receive(stream pb.SpyreHealthService_RegisterForSpyreDevicesEve
 	for {
 		deviceList, err := stream.Recv()
 		if err == io.EOF {
-			break
+			return
 		}
-		Expect(err).To(BeNil())
-		c.mu.Lock()
-		c.devices = deviceList.Devices
-		c.mu.Unlock()
+
+		select {
+		case <-stream.Context().Done():
+			return
+		default:
+			Expect(err).To(BeNil())
+			c.mu.Lock()
+			c.devices = deviceList.Devices
+			c.mu.Unlock()
+		}
+
 	}
 }
 
@@ -86,7 +95,7 @@ func TestServer(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	log.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-	startServer()
+	TestHealthServer = startServer()
 })
 
 var _ = AfterSuite(func() {
@@ -94,8 +103,9 @@ var _ = AfterSuite(func() {
 	Expect(err).To(BeNil())
 })
 
-func startServer() {
+func startServer() *healthServer {
 	s := NewServer()
 	err := s.StartGRPCServer(TestSocket)
 	Expect(err).To(BeNil())
+	return s
 }

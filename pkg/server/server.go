@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/golang/glog"
 	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
@@ -22,6 +23,7 @@ type healthServer struct {
 	pb.UnimplementedSpyreHealthServiceServer
 	updateQueue chan []types.DeviceState
 	socket      string
+	streaming   atomic.Bool
 }
 
 func NewServer() *healthServer {
@@ -61,38 +63,41 @@ func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 	if err := stream.Send(&devices); err != nil {
 		return err
 	}
-	go s.send(stream)
-	return nil
+	s.streaming.Store(true)
+	defer s.streaming.Store(false)
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case states, ok := <-s.updateQueue:
+			if !ok {
+				glog.Warning("update channel is not OK, end connection")
+				return nil
+			}
+			devices := pb.Devices{
+				Devices: s.getPbDevices(states),
+			}
+			if err := stream.Send(&devices); err != nil {
+				glog.Warning("failed to send, end connection")
+				return nil
+			}
+			glog.V(1).Infof("send %v", states)
+		}
+	}
 }
 
 func (s *healthServer) UpdateHealths(states []types.DeviceState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.updateQueue <- states
+	if s.streaming.Load() {
+		s.updateQueue <- states
+	}
 }
 
 func (s *healthServer) Stop() {
 	close(s.updateQueue)
 	if err := safeRemove(s.socket); err != nil {
 		glog.Errorf("failed to remove present %s: %v", s.socket, err)
-	}
-}
-
-func (s *healthServer) send(stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsServer) {
-	for {
-		states, ok := <-s.updateQueue
-		if !ok {
-			glog.V(1).Infof("update channel is not OK")
-			return
-		}
-		devices := pb.Devices{
-			Devices: s.getPbDevices(states),
-		}
-		if err := stream.Send(&devices); err != nil {
-			glog.V(1).Infof("update channel is not OK")
-			return
-		}
-		glog.V(1).Infof("send %v", states)
 	}
 }
 
