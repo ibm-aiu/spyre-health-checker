@@ -13,7 +13,7 @@ pipeline {
 		SLACK_INCOMING_WEBHOOK = credentials('aiu.operator.slack.api.credential')
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
 		GOPRIVATE='github.ibm.com/ai-chip-toolchain/*'
-		GOTOOLCHAIN='go1.24.6'
+		GOTOOLCHAIN='go1.24.11'
 	}
 	stages {
 		stage('Checkout branch') {
@@ -212,21 +212,21 @@ pipeline {
 								withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
 									string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY'),
   									string(credentialsId: 'twistlock-control-group', variable: 'TT_CONTROL_GROUP')]) {
-										sh '''  
+										sh '''
 										make tt-scan-s390x  TT_USER="${TW_USER}:${TW_PASS}" TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
 										'''
 								}
 								*/
 								echo "Scanning for this architecture is not enabled."
-	
+
 							}
 						}
 						stage('Twistlock scan for Scan ppc64le') {
 						   steps {
 								/*
 							   withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
-							   string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY') ]) {					                                         
-								sh ''' 
+							   string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY') ]) {
+								sh '''
 									   make tt-scan-power \
 									   TT_USER="${TW_USER}:${TW_PASS}" \
 									   TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" \
@@ -235,7 +235,7 @@ pipeline {
 								}
 								*/
 								echo "Scanning for this architecture is not enabled."
-							}  
+							}
 						}
 					}
 				}

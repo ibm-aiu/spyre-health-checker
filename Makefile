@@ -339,7 +339,7 @@ docker-remove-images: ## Remove images from build host
 	$(DOCKER) manifest rm $(IMAGE) || true
 	$(DOCKER) rmi -f $(IMAGE)-ppc64le $(IMAGE)-amd64 $(IMAGE)-s390x || true
 
-##twistlock scan 
+##twistlock scan
 
 TT_URL := https://na.artifactory.swg-devops.com/artifactory/css-ets-scs-consec-team-public-generic-local/Twistlock%20Executable/tt_latest.zip
 TT_DIR := $(LOCALBIN)/tt_*/linux_x86_64
@@ -405,7 +405,7 @@ endif
 	@echo "------------------------------------------------"
 	cat ./twistlock-scan-output/ppc64le/image-scan.results.csv
 	@echo "------------------------------------------------"
-	
+
 .PHONY: tt-scan-all
 tt-scan-all: tt-scan-amd64 tt-scan-s390x tt-scan-power
 	@echo "All architectures scanned"
