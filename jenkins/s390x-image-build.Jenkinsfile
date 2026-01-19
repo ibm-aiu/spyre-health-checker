@@ -14,14 +14,14 @@ pipeline {
 	}
 	environment {
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
-		GOTOOLCHAIN = 'go1.24.6'
+		GOTOOLCHAIN = 'go1.24.11'
 	}
 	stages {
 		stage('Checkout branch') {
 			steps {
 				sh "echo ${params.BRANCH_NAME}"
 				sh "git checkout ${params.BRANCH_NAME}"
-				sh "git status"        
+				sh "git status"
 			}
 		}
 
@@ -49,7 +49,7 @@ pipeline {
 					#!/bin/bash -e
 					podman logout icr.io/ibmaiu_internal || true
 					rm -f /root/.docker/config.json || true
-					echo "${ICR_REGISTRY_CREDENTIALS_PSW}" | podman login -u "${ICR_REGISTRY_CREDENTIALS_USR}" --password-stdin icr.io/ibmaiu_internal			
+					echo "${ICR_REGISTRY_CREDENTIALS_PSW}" | podman login -u "${ICR_REGISTRY_CREDENTIALS_USR}" --password-stdin icr.io/ibmaiu_internal
  				'''
 			}
 		}

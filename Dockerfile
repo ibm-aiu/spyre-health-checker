@@ -3,7 +3,7 @@
 
 ARG BASE_UBI_IMAGE_TAG=9.6
 ARG BUILDER_IMAGE
-FROM ${BUILDER_IMAGE:-registry.access.redhat.com/ubi9/go-toolset:9.6-1754467841} AS builder
+FROM ${BUILDER_IMAGE:-registry.access.redhat.com/ubi9/go-toolset:1.24.6-1758501173} AS builder
 ARG TARGETOS
 ARG TARGETARCH
 USER root
@@ -19,6 +19,9 @@ COPY internal/ internal/
 
 # Build
 ARG BUILD_FLAGS=""
+
+ENV GOTOOLCHAIN="go1.24.11"
+
 RUN echo "TARGETARCH = '${TARGETARCH}' TARGETOS='${TARGETOS}'" && \
     echo "GO ENV DUMP: " && go env GOVERSION && go env GOTOOLDIR && \
     CGO_ENABLED=1 GOOS=linux \
