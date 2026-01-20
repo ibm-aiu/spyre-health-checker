@@ -13,6 +13,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
+	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
+	types "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
+
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -94,6 +98,7 @@ func TestServer(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	os.Setenv(utils.PseudoDeviceModeKey, "1")
 	log.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 	TestHealthServer = startServer()
 })
@@ -101,10 +106,13 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	err := os.RemoveAll(TestSocket)
 	Expect(err).To(BeNil())
+	err = os.Unsetenv(utils.PseudoDeviceModeKey)
+	Expect(err).To(BeNil())
 })
 
 func startServer() *healthServer {
-	s := NewServer()
+	vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
+	s := NewServer(&vitals)
 	err := s.StartGRPCServer(TestSocket)
 	Expect(err).To(BeNil())
 	return s

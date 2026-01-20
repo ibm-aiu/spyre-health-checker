@@ -7,9 +7,9 @@ Health Checker for AIU Spyre Cards
 
 ## Simple setup
 
-This client-server with gRPC streaming, is the simplest implementation of what can be found in the `aiu-device-plugin:sunya-ch/auto-pilot-integration` branch. The server runs on `localhost:50051`.
+This client-server system, using gRPC streaming, is the simplest implementation of what can be found in the `aiu-device-plugin:sunya-ch/auto-pilot-integration` branch. The server runs on `localhost:50051`.
 
-The proto file comes from there. It can be edited and built via
+The proto file comes from there. It can be edited and built via:
 
 ```bash
 make protoc-gen
@@ -17,27 +17,35 @@ make protoc-gen
 
 This project has a client and a server.
 
-The server periodically run health checks. At the moment, the health check
-is a fake call to `lspci`.
-The periodic check timer can be set via command line parameter, can be any time
-in the format h-m-s, for instance `5s` or `1h40m`.
+The server periodically runs health checks.
+- By default the checker will call `lspci -vvvnn`
+- If the user runs `export PSEUDO_DEVICE_MODE=1` before running the server, then a default set of pseudo devices are processed.
+
+The periodic check timer can be set via command line parameter
+in the format h-m-s, such as `5s` or `1h40m`.
 
 ## Build and run the server
 
-To build the server:
+First try linting:
+
+```bash
+make checks
+```
+
+Then to build the server:
 
 ```bash
 go build -o spyre-health-checker ./cmd/health-checker/main.go
 ```
 
-to run:
+To run:
 
 ```bash
 rm -f checker.sock # remove previously generated socket if exists
 ./spyre-health-checker --timer 5s --socket checker.sock
 ```
 
-The current output looks like this
+At one point the current server output looked like this:
 
 ```bash
 I0826 21:32:03.349082   24618 main.go:36] loglevel: debug
@@ -48,20 +56,47 @@ I0826 21:32:13.352538   24618 healthcheck.go:9] Running lspci
 I0826 21:32:18.352445   24618 healthcheck.go:9] Running lspci
 I0826 21:32:23.352272   24618 healthcheck.go:9] Running lspci
 I0826 21:32:28.351234   24618 healthcheck.go:9] Running lspci
-I0826 21:32:31.706218   24618 spyrehalthserver.go:49] [Server] Got a request
+I0826 21:32:31.706218   24618 spyrehealthserver.go:49] [Server] Got a request
 I0826 21:32:33.351071   24618 healthcheck.go:9] Running lspci
 ```
 
 ## Test with a client
 
-To run a simple client, in another terminal:
+To run a simple client in default mode, in another terminal, on a machine without Spyre cards:
 
 ```bash
 go run cmd/client/client.go --socket=$(pwd)/checker.sock
 ```
 
-The client will receive the following dummy devices:
+All non-Spyre cards are ignored:
+```
+2025/12/09 17:53:07 using socket checker.sock
+```
 
-> 2025/08/28 18:24:30 using socket /Users/aa404681/Documents/internal_ws/aiu/spyre-health-checker/checker.sock
-> 2025/08/28 18:24:30 Devices:
- [deviceID:{PCIAddress:"0000:1a:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:1c:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:1d:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:1e:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:3d:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:3f:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:40:00.0"} deviceType:PF deviceState:ONLINE deviceID:{PCIAddress:"0000:41:00.0"} deviceType:PF deviceState:IN_ERROR]
+When running with the default pseudo devices (setting `export PSEUDO_DEVICE_MODE=1` before running the server), we 
+would see the following client output:
+
+```
+2025/12/09 17:56:26 using socket checker.sock
+2025/12/09 17:56:26   PCIAddress=0000:1a:00.0  Type=PF  State=ONLINE
+2025/12/09 17:56:26   PCIAddress=0000:1c:00.0  Type=PF  State=ONLINE
+2025/12/09 17:56:26   PCIAddress=0000:1d:00.0  Type=PF  State=ONLINE
+2025/12/09 17:56:26   PCIAddress=0000:1e:00.0  Type=PF  State=ONLINE
+2025/12/09 17:56:26   PCIAddress=0000:3d:00.0  Type=PF  State=ONLINE
+2025/12/09 17:56:26   PCIAddress=0000:3f:00.0  Type=PF  State=ONLINE
+2025/12/09 17:56:26   PCIAddress=0000:40:00.0  Type=PF  State=ONLINE
+2025/12/09 17:56:26   PCIAddress=0000:41:00.0  Type=PF  State=IN_ERROR
+```
+
+Currently the server output for this case looks like this:
+```
+I1209 17:58:20.713943   86070 main.go:47] loglevel: debug
+I1209 17:58:20.714464   86070 main.go:50] Starting gRPC server
+I1209 17:58:20.714786   86070 main.go:55] Starting timer for periodic checks
+I1209 17:58:28.644194   86070 server.go:55] register health stream
+I1209 17:58:28.644507   86070 server.go:90] update channel is not OK: rpc error: code = Canceled desc = context canceled
+```
+
+## Unit testing
+
+Simply run: `make test`

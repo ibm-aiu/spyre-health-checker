@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"strings"
-	"time"
 
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"google.golang.org/grpc"
@@ -39,7 +38,7 @@ func main() {
 
 	client := pb.NewSpyreHealthServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	stream, err := client.RegisterForSpyreDevicesEvents(ctx, &emptypb.Empty{})
@@ -58,6 +57,11 @@ func main() {
 			cancel()
 			log.Fatalf("client.RegisterForSpyreDevicesEvents failed: %v", err) // nolint:gocritic
 		}
+
+		if len(deviceList.Devices) == 0 {
+			log.Printf("Query did not identify any supported devices.")
+		}
+
 		log.Println("Devices:\n", deviceList.Devices)
 	}
 }
