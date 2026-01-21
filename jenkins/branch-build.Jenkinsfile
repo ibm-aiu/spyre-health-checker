@@ -183,8 +183,8 @@ pipeline {
 			   	}
 				stage('Install Twistlock CLI') {
 					steps {
-						withCredentials([string(credentialsId: 'aiu.operator.artifactory.bearer.token', variable: 'ARTIFACTORY_TOKEN')]) {
-							sh 'make tt-install'
+						withCredentials([usernamePassword(credentialsId: 'aiu.operator.artifactory.api.credential', usernameVariable: 'ARTIFACTORY_USER', passwordVariable: 'ARTIFACTORY_PASS')]){
+										 sh 'make tt-install ARTIFACTORY_USER="${ARTIFACTORY_USER}" ARTIFACTORY_PASS="${ARTIFACTORY_PASS}"'
 						}
 					}
 				 }
