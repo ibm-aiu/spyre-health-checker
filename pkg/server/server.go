@@ -7,15 +7,11 @@ import (
 	"sync/atomic"
 
 	"github.com/golang/glog"
-	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
+	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-)
-
-var (
-	pseudoDeviceHealths = utils.GetPseudoDeviceHealths()
 )
 
 type healthServer struct {
@@ -23,12 +19,16 @@ type healthServer struct {
 	pb.UnimplementedSpyreHealthServiceServer
 	updateQueue chan []types.DeviceState
 	socket      string
+	vitals      *healthcheck.Vitals
 	streaming   atomic.Bool
 }
 
-func NewServer() *healthServer {
+func NewServer(v *healthcheck.Vitals) *healthServer {
+	// Initialize state
+	v.UpdateStates()
 	s := healthServer{
 		updateQueue: make(chan []types.DeviceState),
+		vitals:      v,
 	}
 	return &s
 }
@@ -58,7 +58,7 @@ func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 	stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsServer) error {
 	glog.V(1).Infof("register health stream")
 	devices := pb.Devices{
-		Devices: s.getPbDevices(pseudoDeviceHealths),
+		Devices: s.getPbDevices(s.vitals.States),
 	}
 	if err := stream.Send(&devices); err != nil {
 		return err

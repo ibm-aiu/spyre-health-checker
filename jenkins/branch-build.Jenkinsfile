@@ -86,7 +86,7 @@ pipeline {
 								'''
 							}
 						}
-						/* TODO re-enable mulit arch builds when they are necessary.
+						/* TODO re-enable multi arch builds when they are necessary.
 						stage('Build s390x(IBM Z) images') {
 							steps {
 								script {
