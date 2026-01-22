@@ -18,4 +18,10 @@ var _ = Describe("HealthChecker functions", func() {
 		Expect(func() { vitals.UpdateStates() }).NotTo(Panic())
 	})
 
+	It("UpdateStates() does not error with simple test scenario", func() {
+		vitals := Vitals{States: make([]types.DeviceState, 0)}
+		err := vitals.UpdateStates()
+		Expect(err).To(BeNil())
+	})
+
 })

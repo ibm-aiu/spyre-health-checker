@@ -5,8 +5,6 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/golang/glog"
-
 	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
 	types "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
 )
@@ -32,20 +30,19 @@ func (v *Vitals) runLSPCI() ([]types.DeviceState, error) {
 }
 
 // UpdateStates updates device states.
-func (v *Vitals) UpdateStates() {
+func (v *Vitals) UpdateStates() error {
 	var states []types.DeviceState
 	if utils.IsPseudoDeviceMode() {
 		states = utils.GetPseudoDeviceHealths()
-		glog.Info(states)
 	} else {
 		var err error
 		states, err = v.runLSPCI()
 		if err != nil {
-			glog.Errorf("Failed to UpdateStates: %v", err)
-			return
+			return err
 		}
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.States = states
+	return nil
 }

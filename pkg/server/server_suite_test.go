@@ -13,12 +13,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/go-logr/zapr"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
 	types "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
 
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 )
@@ -99,7 +102,18 @@ func TestServer(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	os.Setenv(utils.PseudoDeviceModeKey, "1")
-	log.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+
+	ws := zapcore.AddSync(GinkgoWriter)
+
+	encCfg := zap.NewDevelopmentEncoderConfig()
+	enc := zapcore.NewConsoleEncoder(encCfg)
+
+	core := zapcore.NewCore(enc, ws, zap.DebugLevel)
+	uber := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.ErrorLevel))
+	defer uber.Sync()
+
+	crlog.SetLogger(zapr.NewLogger(uber))
+
 	TestHealthServer = startServer()
 })
 
@@ -111,6 +125,9 @@ var _ = AfterSuite(func() {
 })
 
 func startServer() *healthServer {
+	logger := zap.Must(zap.NewDevelopment()).Sugar()
+	defer logger.Sync() //nolint:errcheck
+	SetLogger(logger)
 	vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
 	s := NewServer(&vitals)
 	err := s.StartGRPCServer(TestSocket)

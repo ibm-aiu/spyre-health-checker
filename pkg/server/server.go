@@ -6,13 +6,35 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/golang/glog"
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"go.uber.org/zap"
 )
+
+var (
+	loggerMu sync.RWMutex
+	logger   *zap.SugaredLogger = zap.NewNop().Sugar()
+)
+
+func SetLogger(l *zap.SugaredLogger) {
+	loggerMu.Lock()
+	defer loggerMu.Unlock()
+	if l == nil {
+		logger = zap.NewNop().Sugar()
+		return
+	}
+	logger = l
+}
+
+func getLogger() *zap.SugaredLogger {
+	loggerMu.RLock()
+	defer loggerMu.RUnlock()
+	return logger
+}
 
 type healthServer struct {
 	mu sync.RWMutex
@@ -25,7 +47,10 @@ type healthServer struct {
 
 func NewServer(v *healthcheck.Vitals) *healthServer {
 	// Initialize state
-	v.UpdateStates()
+	err := v.UpdateStates()
+	if err != nil {
+		getLogger().Warnf("Error calling UpdateStates(): %v", err)
+	}
 	s := healthServer{
 		updateQueue: make(chan []types.DeviceState),
 		vitals:      v,
@@ -34,20 +59,28 @@ func NewServer(v *healthcheck.Vitals) *healthServer {
 }
 
 func (s *healthServer) StartGRPCServer(socket string) error {
+	var log *zap.SugaredLogger
 	if err := safeRemove(socket); err != nil {
-		glog.Errorf("failed to remove present %s: %v", socket, err)
+		log = getLogger()
+		log.Errorf("failed to remove present %s: %v", socket, err)
 	}
 
 	lis, err := net.Listen("unix", socket)
 	if err != nil {
-		glog.Errorf("failed to listen: %v", err)
+		if log == nil {
+			log = getLogger()
+		}
+		log.Errorf("failed to listen: %v", err)
 		return err
 	}
 	grpcServer := grpc.NewServer()
 	pb.RegisterSpyreHealthServiceServer(grpcServer, s)
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
-			glog.Errorf("failed to serve: %v", err)
+			if log == nil {
+				log = getLogger()
+			}
+			logger.Errorf("failed to serve: %v", err)
 		}
 	}()
 	s.socket = socket
@@ -56,7 +89,8 @@ func (s *healthServer) StartGRPCServer(socket string) error {
 
 func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 	stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsServer) error {
-	glog.V(1).Infof("register health stream")
+	log := getLogger()
+	log.Infof("register health stream")
 	devices := pb.Devices{
 		Devices: s.getPbDevices(s.vitals.States),
 	}
@@ -71,17 +105,17 @@ func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 			return nil
 		case states, ok := <-s.updateQueue:
 			if !ok {
-				glog.Warning("update channel is not OK, end connection")
+				log.Warnf("update channel is not OK, end connection")
 				return nil
 			}
 			devices := pb.Devices{
 				Devices: s.getPbDevices(states),
 			}
 			if err := stream.Send(&devices); err != nil {
-				glog.Warning("failed to send, end connection")
+				log.Warnf("failed to send, end connection")
 				return nil
 			}
-			glog.V(1).Infof("send %v", states)
+			log.Infof("send %v", states)
 		}
 	}
 }
@@ -97,7 +131,7 @@ func (s *healthServer) UpdateHealths(states []types.DeviceState) {
 func (s *healthServer) Stop() {
 	close(s.updateQueue)
 	if err := safeRemove(s.socket); err != nil {
-		glog.Errorf("failed to remove present %s: %v", s.socket, err)
+		getLogger().Errorf("failed to remove present %s: %v", s.socket, err)
 	}
 }
 

@@ -144,7 +144,6 @@ func parseDeviceStanza(stanza string) deviceInfo {
 	firstLine := firstNonEmptyLine(stanza)
 	pci, vendev, rev, ok := parseHeader(firstLine)
 	if !ok || rev == "01" {
-		// glog.Infof("Info: Ignoring unsupported device: %q", firstLine)
 		return di
 	}
 	if len(pci) == 7 {

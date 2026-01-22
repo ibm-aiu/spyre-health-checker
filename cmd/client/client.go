@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"io"
-	"log"
 	"strings"
 
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -20,19 +21,23 @@ var (
 func main() {
 	flag.Parse()
 
+	logger := zap.Must(zap.NewDevelopment()).Sugar()
+	defer logger.Sync() //nolint:errcheck
+
 	var sock string
 	if strings.Contains(*socket, "/") {
 		sock = "unix://" + *socket
 	} else {
 		sock = "unix:" + *socket
 	}
-	log.Printf("using socket %s", *socket)
+
+	logger.Infof("using socket %s", *socket)
 
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	conn, err := grpc.NewClient(sock, opts...)
 	if err != nil {
-		log.Fatalf("fail to dial: %v", err)
+		logger.Fatalf("fail to dial: %v", err)
 	}
 	defer conn.Close() //nolint:errcheck
 
@@ -45,7 +50,7 @@ func main() {
 
 	if err != nil {
 		cancel()
-		log.Fatalf("client.client.RegisterForSpyreDevicesEvents failed: %v", err) // nolint:gocritic
+		logger.Fatalf("client.client.RegisterForSpyreDevicesEvents failed: %v", err) // nolint:gocritic
 	}
 
 	for {
@@ -55,20 +60,19 @@ func main() {
 		}
 		if err != nil {
 			cancel()
-			log.Fatalf("client.RegisterForSpyreDevicesEvents failed: %v", err) // nolint:gocritic
+			logger.Fatalf("client.RegisterForSpyreDevicesEvents failed: %v", err) // nolint:gocritic
 		}
 
 		if len(deviceList.Devices) == 0 {
-			log.Printf("Query did not identify any supported devices.")
+			logger.Infof("Query did not identify any supported devices.")
 		}
 
 		for _, d := range deviceList.Devices {
-			log.Printf("  PCIAddress=%s  Type=%s  State=%s",
+			logger.Infof("  PCIAddress=%s  Type=%s  State=%s",
 				d.GetDeviceID().GetPCIAddress(),
 				d.GetDeviceType().String(),
 				d.GetDeviceState().String(),
 			)
 		}
-
 	}
 }
