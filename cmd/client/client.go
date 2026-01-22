@@ -62,6 +62,13 @@ func main() {
 			log.Printf("Query did not identify any supported devices.")
 		}
 
-		log.Println("Devices:\n", deviceList.Devices)
+		for _, d := range deviceList.Devices {
+			log.Printf("  PCIAddress=%s  Type=%s  State=%s",
+				d.GetDeviceID().GetPCIAddress(),
+				d.GetDeviceType().String(),
+				d.GetDeviceState().String(),
+			)
+		}
+
 	}
 }
