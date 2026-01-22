@@ -137,7 +137,7 @@ $(GOVULCHECK): $(LOCALBIN)
 
 .PHONY: protoc-gen
 protoc-gen: ## Generated files from proto
-	go tool buf generate.PHONY: venv
+	go tool buf generate
 
 .PHONY: venv
 venv: ## Setup and activate venv
@@ -401,8 +401,6 @@ endif
 	cat ./twistlock-scan-output/s390x/image-scan.results.csv
 	@echo "------------------------------------------------"
 
-##Performs a Twistlock scan on the power image
-.PHONY: tt-scan-power
 .PHONY: tt-scan-ppc64le
 tt-scan-ppc64le: ## Scan the device plugin image for the ppc64le platform
 	@echo "Scanning power image: $(IMAGE)-ppc64le"

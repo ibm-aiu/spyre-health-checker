@@ -17,7 +17,8 @@ make protoc-gen
 
 This project has a client and a server.
 
-The server periodically runs health checks.
+The server periodically runs health checks:
+
 - By default the checker will call `lspci -vvvnn`
 - If the user runs `export PSEUDO_DEVICE_MODE=1` before running the server, then a default set of pseudo devices are processed.
 
@@ -69,14 +70,14 @@ go run cmd/client/client.go --socket=$(pwd)/checker.sock
 ```
 
 All non-Spyre cards are ignored:
-```
+
+```text
 2025/12/09 17:53:07 using socket checker.sock
 ```
 
-When running with the default pseudo devices (setting `export PSEUDO_DEVICE_MODE=1` before running the server), we 
-would see the following client output:
+When running with the default pseudo devices (setting `export PSEUDO_DEVICE_MODE=1` before running the server), we would see the following client output:
 
-```
+```text
 2025/12/09 17:56:26 using socket checker.sock
 2025/12/09 17:56:26   PCIAddress=0000:1a:00.0  Type=PF  State=ONLINE
 2025/12/09 17:56:26   PCIAddress=0000:1c:00.0  Type=PF  State=ONLINE
@@ -89,7 +90,8 @@ would see the following client output:
 ```
 
 Currently the server output for this case looks like this:
-```
+
+```text
 I1209 17:58:20.713943   86070 main.go:47] loglevel: debug
 I1209 17:58:20.714464   86070 main.go:50] Starting gRPC server
 I1209 17:58:20.714786   86070 main.go:55] Starting timer for periodic checks
@@ -100,3 +102,57 @@ I1209 17:58:28.644507   86070 server.go:90] update channel is not OK: rpc error:
 ## Unit testing
 
 Simply run: `make test`
+
+## Detect-secrets usage
+
+Detect Secrets tool will prevent your secrets from getting leaked. It is enabled by default as part of pre-commit hook, you just have to install it as below,
+
+```sh
+cd <repo path>
+pre-commit install --install-hooks
+```
+
+With this, whenever changes are staged, detect-secrets hook will capture any leaked secret. However, if developer wants to scan repo on a routinely basis, follow the steps below:
+
+### 1. Run detect-secrets hook
+
+```sh
+cd <repo path>
+pre-commit run detect-secrets --all-files
+```
+
+This will catch any leaked-secret and fail the execution. If secrets are found, we have to scan and audit it as mentioned in following section.
+
+### Detect-secrets cli
+
+This is required when you want to update `.secrets.baseline` file with regards to any new secret.
+
+#### 1. Install Detect Secrets
+
+```sh
+cd <repo path>
+make detect-secrets-install
+```
+
+#### 2. Perform secret scan
+
+```sh
+cd <repo path>
+make secrets-scan
+```
+
+Note: running the above command will create a .secrets.baseline file or update if already exists. Currently `go.sum` files are excluded from the scans.
+
+#### 3. Audit secrets
+
+```sh
+cd <repo path>
+make secrets-audit
+```
+
+Indicate (y)es if the secret found is an actual secret or (n)o if it is a false positive.
+If any secrets are found in your audit, remove them from the code, revoke the access of the credentials, commit your changes, and repeat step 3. Once you have verified that all secrets are addressed, update `is_verified` field for different secrets to `true` in `.secrets.baseline` manually.
+
+#### 4. Commit .secrets.baseline and push commit
+
+You can repeat steps 2 to 4 every time you want to scan secrets.

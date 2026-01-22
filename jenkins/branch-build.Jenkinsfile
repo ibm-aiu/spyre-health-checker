@@ -1,3 +1,7 @@
+// +-------------------------------------------------------------------+
+// | Copyright IBM Corp. 2025 All Rights Reserved                      |
+// +-------------------------------------------------------------------+
+
 pipeline {
 	agent {
 		label 'taas_image_with_docker_aiu_operator'
@@ -12,7 +16,7 @@ pipeline {
 	environment {
 		SLACK_INCOMING_WEBHOOK = credentials('aiu.operator.slack.api.credential')
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
-		GOPRIVATE='github.ibm.com/ai-chip-toolchain/*'
+		GOPRIVATE = 'github.ibm.com/ai-chip-toolchain/*,github.ibm.com/ai-foundation/*'
 		GOTOOLCHAIN='go1.24.11'
 	}
 	stages {
@@ -38,23 +42,87 @@ pipeline {
 				echo "change id env var : ${CHANGE_ID}"
 				make echo-version
 				git config --global --unset "url.https://taas-github-ibm-cache.swg-devops.com/.insteadof" || true
-				git config --global url."https://x-access-token:${GH_CREDENTIALS_PSW}@github.ibm.com/".insteadOf "https://github.ibm.com/"
+				echo "machine github.ibm.com login ${GH_CREDENTIALS_USR} password ${GH_CREDENTIALS_PSW}" > ${HOME}/.netrc
 				'''
 			}
 		}
 		stage ('Download dependencies') {
 			steps {
 				sh 'make ginkgo golangci-lint vendor'
+				sh 'sudo apt-get update'
+				sh 'sudo apt-get install -y bc unzip curl ca-certificates uuid-runtime'
+
 			}
 		}
-		stage ('Run unit tests') {
-			steps {
-				sh 'make test'
+		stage ('PR Build') {
+			when {
+				branch comparator: 'REGEXP', pattern: '^PR-\\d+$';
+			}
+			stages {
+				stage('Run pre-commit check ') {
+					steps {
+						sh'''
+						pip install --upgrade pip
+						pip install pre-commit gitlint
+						git config --unset-all core.hooksPath
+						pre-commit install --install-hooks
+						git fetch origin ${CHANGE_TARGET}:refs/remotes/origin/${CHANGE_TARGET}
+						git fetch origin ${CHANGE_BRANCH}:refs/remotes/origin/${CHANGE_BRANCH}
+						git log -1 --pretty=%B | gitlint
+						pre-commit run --from-ref origin/${CHANGE_TARGET} --to-ref origin/${CHANGE_BRANCH}
+						'''
+					}
+				}
+				stage ('Run unit tests') {
+					steps {
+						sh 'make vendor fmt vet test'
+					}
+				}
+				stage('Build executable and run linter') {
+					steps {
+						sh 'make vendor build lint'
+					}
+				}
+				/* TODO Enable stage once a proper keys has been established
+				stage('Run sonar qube scan for PR') {
+					steps {
+						script {
+							jobResult = build(job: 'aiu-operator-pipelines/spyre-device-plugin-sonar-qube-scan',
+										propagate:false,
+										parameters: [
+											string(name: 'BRANCH_NAME', value: "${env.CHANGE_BRANCH}"),
+											string(name: 'SCAN_TYPE',   value: 'pr-scan'),
+											string(name: 'PR', 			value: "${env.BRANCH_NAME}")
+										]).result
+							if (jobResult != 'SUCCESS') {
+								catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+									warning('Sonar Qube scan failed...')
+								}
+							}
+						}
+					}
+				}
+				*/
 			}
 		}
-		stage('Build executable and run linter') {
-			steps {
-				sh 'make vendor build lint'
+		stage('Run detect-secrets') {
+			when {
+				not {
+					branch comparator: 'REGEXP', pattern: '^PR-\\d+$';
+				}
+			}
+			stages {
+				stage('Run pre-commit check to detect-secrets ') {
+					steps {
+						sh'''
+						pip install --upgrade pip
+						pip install pre-commit
+						git config --unset-all core.hooksPath
+						pre-commit install --install-hooks
+						pre-commit run detect-secrets --all-files
+						'''
+					}
+				}
 			}
 		}
 		stage('Build docker artifacts') {
@@ -66,33 +134,30 @@ pipeline {
 			stages {
 				stage('Login to docker registries') {
 					environment {
-						RH_REGISTRY_CREDENTIALS = credentials('aiu.operator.redhat.registry.api.credential')
 						ICR_REGISTRY_CREDENTIALS=credentials('aiu.operator.icr.api.credential')
 					}
 					steps {
 						sh '''
 						#!/bin/bash -e
-						echo "${RH_REGISTRY_CREDENTIALS_PSW}" | docker login -u "${RH_REGISTRY_CREDENTIALS_USR}" --password-stdin registry.redhat.io
 						echo "${ICR_REGISTRY_CREDENTIALS_PSW}" | docker login -u "${ICR_REGISTRY_CREDENTIALS_USR}" --password-stdin icr.io/ibmaiu_internal
 						'''
 					}
 				}
-				stage('Build images for each CPU arch') {
+				stage ('Build images') {
 					parallel {
 						stage('Build amd64 images') {
 							steps {
 								sh '''
-								make docker-build
+								make docker-build-amd64
 								'''
 							}
 						}
-						/* TODO re-enable multi arch builds when they are necessary.
 						stage('Build s390x(IBM Z) images') {
 							steps {
 								script {
 									build job: 'aiu-operator-pipelines/spyre-health-checker-image-s390x',
 										parameters: [
-											string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}")
+											string(name: 'BRANCH_NAME', value: "${env.BRANCH_NAME}")
 									]
 								}
 							}
@@ -102,70 +167,21 @@ pipeline {
 								script {
 									build job: 'aiu-operator-pipelines/spyre-health-checker-image-build-power',
 										parameters: [
-											string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}")
+											string(name: 'BRANCH_NAME', value: "${env.BRANCH_NAME}")
 										]
 								}
 							}
 						}
-						*/
+
 					}
 				}
 				stage('Collect images into a manifest') {
 					steps {
-						sh 'make docker-build-push'
+						sh 'make docker-build-manifest docker-push-manifest'
 					}
 				}
 			}
 		}
-		/* TODO: enable e2e tests when the operator builds have been updated to
-		accept the component and also be upgraded to golang 1.24
-
-		stage ('Run e2e test') {
-			when {
-				not {
-					anyOf {
-						branch comparator: 'REGEXP', pattern: '^PR-\\d+$';
-						branch comparator: 'REGEXP', pattern: '^release_[0-9]+(\\_[0-9]+)+$';
-						branch comparator: 'REGEXP', pattern: '^release_v[0-9]+(\\.[0-9]+)+$';
-						branch comparator: 'REGEXP', pattern: '^v[0-9](\\.[0-9]+)+-rc\\.[0-9]+$';
-					}
-				}
-			}
-			parallel {
-				stage('Run e2e test for amd64') {
-					steps {
-						build job: 'aiu-operator-pipelines/crc-aiu-operator-end-to-end-test',
-							parameters: [
-								string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
-								string(name: 'GOLANG_VERSION',  value: 'v1.23'),
-							]
-					}
-				}
-				stage('Run e2e test for s390x') {
-					steps {
-						script {
-							build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-s390x',
-								parameters: [
-									string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
-									string(name: 'GOLANG_VERSION',  value: 'v1.23'),
-								]
-						}
-					}
-				}
-				stage('Run e2e test for power') {
-					steps {
-						script {
-							build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-ppc64le',
-								parameters: [
-									string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
-									string(name: 'GOLANG_VERSION',  value: 'v1.23'),
-								]
-						}
-					}
-				}
-			}
-		}
-		*/
 		stage('Twistlock') {
 			when {
 				not {
@@ -173,14 +189,6 @@ pipeline {
 				}
 			}
 			stages {
-				stage('Install Twistlock  Dependencies') {
-					steps {
-						sh '''
-							sudo apt-get update
-							sudo apt-get install -y unzip curl ca-certificates uuid-runtime
-						'''
-					}
-			   	}
 				stage('Install Twistlock CLI') {
 					steps {
 						withCredentials([usernamePassword(credentialsId: 'aiu.operator.artifactory.api.credential', usernameVariable: 'ARTIFACTORY_USER', passwordVariable: 'ARTIFACTORY_PASS')]){
@@ -188,8 +196,8 @@ pipeline {
 						}
 					}
 				 }
-				 stage('Twistlock Scan') {
-					 parallel {
+				stage('Twistlock Scan') {
+					stages {
 						stage('Twistlock scan for amd64') {
 							steps {
 								/*
@@ -208,7 +216,6 @@ pipeline {
 						}
 						stage('Twistlock scan for Scan s390x') {
 							steps {
-								/* Enable when multi arch builds are complete
 								withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
 									string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY'),
   									string(credentialsId: 'twistlock-control-group', variable: 'TT_CONTROL_GROUP')]) {
@@ -216,31 +223,103 @@ pipeline {
 										make tt-scan-s390x  TT_USER="${TW_USER}:${TW_PASS}" TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
 										'''
 								}
-								*/
-								echo "Scanning for this architecture is not enabled."
-
 							}
 						}
 						stage('Twistlock scan for Scan ppc64le') {
 						   steps {
-								/*
-							   withCredentials([usernamePassword(credentialsId: 'w3-twistlock-user-pass', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
-							   string(credentialsId: 'twistlock-iam-api-key',variable: 'TWIST_LOCK_API_KEY') ]) {
-								sh '''
-									   make tt-scan-power \
-									   TT_USER="${TW_USER}:${TW_PASS}" \
-									   TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" \
-									   TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
-									'''
+							   withCredentials([usernamePassword(credentialsId: 'spyre.operator.twistlock.login.power', usernameVariable: 'TW_USER', passwordVariable: 'TW_PASS'),
+									   string(credentialsId: 'spyre.operator.twistlock.apikey.power',variable: 'TWIST_LOCK_API_KEY'),
+									string(credentialsId: 'spyre.operator.twistlock.controlgroup.power', variable: 'TT_CONTROL_GROUP')]) {
+										sh '''
+										make tt-scan-ppc64le \
+										TT_USER="${TW_USER}:${TW_PASS}" \
+										TT_CONTROL_GROUP="${TT_CONTROL_GROUP}" \
+										TWIST_LOCK_API_KEY="${TWIST_LOCK_API_KEY}"
+										'''
 								}
-								*/
-								echo "Scanning for this architecture is not enabled."
 							}
+						}
+					}
+				}
+				stage('Archive twistlock scan results') {
+					steps {
+						sh 'zip -r twistlock-scan-results.zip twistlock-scan-output/'
+						archiveArtifacts artifacts: 'twistlock-scan-results.zip', fingerprint: true
+					}
+				}
+			}
+		}
+		/* TODO: Enable stage once we have a proper key
+		stage('Run SonarQube scan for default or release branch') {
+			when {
+				anyOf {
+					branch comparator: 'REGEXP', pattern: '^main$';
+					branch comparator: 'REGEXP', pattern: '^release_[0-9]+(\\_[0-9]+)+$';
+					branch comparator: 'REGEXP', pattern: '^release_v[0-9]+(\\.[0-9]+)+$';
+				}
+			}
+			steps {
+				script {
+					jobResult = build(job: 'aiu-operator-pipelines/spyre-device-plugin-sonar-qube-scan',
+							propagate:false,
+							parameters: [
+								string(name: 'BRANCH_NAME', value: "${env.BRANCH_NAME}"),
+								string(name: 'SCAN_TYPE',   value: "branch-scan")
+							]).result
+					if (jobResult != 'SUCCESS') {
+						catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+							warning('Sonar Qube scan failed.')
 						}
 					}
 				}
 			}
 		}
+		*/
+		/* TODO: enable e2e tests when the operator builds have been updated to
+			accept the component
+		stage ('Run e2e test') {
+			when {
+				not {
+					anyOf {
+						branch comparator: 'REGEXP', pattern: '^PR-\\d+$';
+						branch comparator: 'REGEXP', pattern: '^release_[0-9]+(\\_[0-9]+)+$';
+						branch comparator: 'REGEXP', pattern: '^release_v[0-9]+(\\.[0-9]+)+$';
+						branch comparator: 'REGEXP', pattern: '^v[0-9](\\.[0-9]+)+-rc\\.[0-9]+$';
+					}
+				}
+			}
+			parallel {
+				stage('Run e2e test for amd64') {
+					steps {
+						build job: 'aiu-operator-pipelines/crc-aiu-operator-end-to-end-test',
+							parameters: [
+								string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+							]
+					}
+				}
+				stage('Run e2e test for s390x') {
+					steps {
+						script {
+							build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-s390x',
+								parameters: [
+									string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+								]
+						}
+					}
+				}
+				stage('Run e2e test for power') {
+					steps {
+						script {
+							build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-ppc64le',
+								parameters: [
+									string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+								]
+						}
+					}
+				}
+			}
+		}
+		*/
 		stage('Create GH release') {
 			when {
 				anyOf {
@@ -276,8 +355,7 @@ pipeline {
 						chmod +x "$tmpfile"
 						git config --global --unset "url.https://taas-github-ibm-cache.swg-devops.com/.insteadof" || true
 						echo "$GITHUB_TOKEN" | gh auth login --hostname github.ibm.com --with-token
-						make release-tag-push
-						make create-gh-release
+						make github-release
 						'''
 					}
 				}
@@ -295,6 +373,10 @@ pipeline {
 				'''
 			}
 			sleep(2)
+		}
+		cleanup {
+			cleanWs disableDeferredWipeout: true, notFailBuild: true, cleanWhenNotBuilt: false, deleteDirs: true
+			sh 'rm -f ${HOME}/.netrc'
 		}
 	}
 }

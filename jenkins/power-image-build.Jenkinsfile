@@ -1,6 +1,13 @@
+// +-------------------------------------------------------------------+
+// | Copyright IBM Corp. 2025 All Rights Reserved                      |
+// +-------------------------------------------------------------------+
+
 pipeline {
 	agent {
-		label 'power-build'
+		node {
+			label 'secure-build-power'
+			customWorkspace "./workspace/${JOB_NAME}/${BUILD_NUMBER}"
+		}
 	}
 	parameters {
 		string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Branch name to execute the image build from')
@@ -10,12 +17,13 @@ pipeline {
 		buildDiscarder(logRotator(numToKeepStr: '10'))
 		disableConcurrentBuilds()
 		timeout(time: 25, unit: 'HOURS')
-		parallelsAlwaysFailFast()
 	}
 	environment {
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
 		PATH = "${env.PATH}:/var/jenkins-home/go/bin"
+		GOPRIVATE = 'github.ibm.com/ai-chip-toolchain/*,github.ibm.com/ai-foundation/*'
 		GOTOOLCHAIN = 'go1.24.11'
+		DOCKER = "podman"
 	}
 	stages {
 		stage('Checkout branch') {
@@ -34,14 +42,13 @@ pipeline {
 			steps {
 				sh'''
 				#!/bin/bash -e
+				go version
 				git branch --show-current
 				git rev-parse --abbrev-ref HEAD
 				echo BUILD_TYPE=$(./hack/get-build-type.bash)
 				echo "git branch env var: ${GIT_BRANCH}"
 				echo "change id env var : ${CHANGE_ID}"
 				make echo-version
-				git config --global --unset "url.https://taas-github-ibm-cache.swg-devops.com/.insteadof" || true
-				git config --global url."https://x-access-token:${GH_CREDENTIALS_PSW}@github.ibm.com/".insteadOf "https://github.ibm.com/"
 				'''
 			}
 		}
@@ -52,7 +59,7 @@ pipeline {
 			steps {
 				sh '''
 				#!/bin/bash -e
-				echo "${ICR_REGISTRY_CREDENTIALS_PSW}" | podman login -u "${ICR_REGISTRY_CREDENTIALS_USR}" --password-stdin icr.io/ibmaiu_internal
+				echo "${ICR_REGISTRY_CREDENTIALS_PSW}" | ${DOCKER} login -u "${ICR_REGISTRY_CREDENTIALS_USR}" --password-stdin icr.io/ibmaiu_internal
 				'''
 			}
 		}
@@ -60,6 +67,9 @@ pipeline {
 			steps {
 				sh '''
 				#!/bin/bash -e
+				export GIT_ASKPASS="${PWD}/jenkins/scripts/git-askpass.bash"
+				export GIT_TERMINAL_PROMPT=1
+				echo ${GIT_ASKPASS}
 				make docker-build-power docker-push-power
 				'''
 			}
@@ -72,10 +82,10 @@ pipeline {
 				sh '''
 				#!/bin/bash -e
 				make docker-remove-images
-				if pgrep -f "podman build" >/dev/null; then
+				if pgrep -f "${DOCKER} build" >/dev/null; then
 					echo "WARNING: another build is in process, skipping cleanup"
 				else
-					podman images --all --filter "dangling=true" -q | xargs -r podman rmi -f || true
+					${DOCKER} images --all --filter "dangling=true" -q | xargs -r ${DOCKER} rmi -f || true
 				fi
 				'''
 			}
