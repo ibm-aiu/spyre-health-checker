@@ -1,5 +1,7 @@
-# Copyright (c) 2022 IBM Corp. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# +-------------------------------------------------------------------+
+# | Copyright IBM Corp. 2025 All Rights Reserved                      |
+# | PID 5698-SPR                                                      |
+# +-------------------------------------------------------------------+
 
 GOLANG_VERSION		?= $(shell cd $(REPO_ROOT) && go list -f {{.GoVersion}} -m)
 BUILDER_IMAGE		?= registry.access.redhat.com/ubi9/go-toolset:1.24.6-1758501173
@@ -26,7 +28,6 @@ OS					?= $(shell go env GOOS)
 ARCH				?= $(shell go env GOARCH)
 LDFLAGS				=
 
-
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -45,16 +46,21 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 ## Tool Binaries
+PYTHON          ?= python3
+PIP             ?= pip3
 ENVTEST			?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT	?= $(LOCALBIN)/golangci-lint
 GOVULCHECK		?= $(LOCALBIN)/govulncheck
 GINKGO			?= $(LOCALBIN)/ginkgo
 YQ				?= $(LOCALBIN)/yq
 
+# detect-secrets
+DETECT_SECRETS_GIT ?= "https://github.com/ibm/detect-secrets.git@master\#egg=detect-secrets"
+
 ## Tool Versions
 ENVTEST_K8S_VERSION			?= 1.31
-GOLANGCI_LINT_VERSION 		?= 1.64.8
-GINKGO_VERSION 				?= v2.25.1
+GOLANGCI_LINT_VERSION		?= 1.64.8
+GINKGO_VERSION				?= v2.25.1
 YQ_VERSION 					?= v4.29.2
 
 # Shamesly copied from: https://github.com/opendatahub-io/opendatahub-operator/blob/a08c94a226585e43387ad263e2653c0fd43130f1/Makefile#L132C1-L139C1
@@ -130,8 +136,12 @@ $(GOVULCHECK): $(LOCALBIN)
 ##@ protoc targets
 
 .PHONY: protoc-gen
-protoc-gen:
-	go tool buf generate
+protoc-gen: ## Generated files from proto
+	go tool buf generate.PHONY: venv
+
+.PHONY: venv
+venv: ## Setup and activate venv
+	$(PYTHON) -m venv venv
 
 ##@ Test targets
 
@@ -351,7 +361,7 @@ tt-install: $(TT_BIN) ## Download and install Twistlock scanner (tt)
 
 $(TT_BIN): $(LOCALBIN)
 	@echo "Downloading tt for Linux x86_64..."
-	curl -H "Authorization: Bearer $(ARTIFACTORY_TOKEN)" \
+	curl -u "$(ARTIFACTORY_USER):$(ARTIFACTORY_PASS)" \
 	     --silent --fail --location "$(TT_URL)" \
 	     --output $(LOCALBIN)/tt_latest.zip
 	unzip -qo $(LOCALBIN)/tt_latest.zip -d $(LOCALBIN) > /dev/null
@@ -393,13 +403,15 @@ endif
 
 ##Performs a Twistlock scan on the power image
 .PHONY: tt-scan-power
-tt-scan-power: ## Scan the spyre-health-checker image for the ppc64le platform
+.PHONY: tt-scan-ppc64le
+tt-scan-ppc64le: ## Scan the device plugin image for the ppc64le platform
 	@echo "Scanning power image: $(IMAGE)-ppc64le"
 	mkdir -pv ./twistlock-scan-output/ppc64le
+	$(DOCKER) pull $(IMAGE)-ppc64le
 ifneq (pr , $(BUILD_TYPE))
-	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/ppc64le --output-file image-scan $(IMAGE)-ppc64le
+	$(TT_BIN) images local-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/ppc64le --output-file image-scan $(IMAGE)-ppc64le
 else
-	$(TT_BIN) images pull-and-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/ppc64le --has-fix-filter Y --output-file image-scan $(IMAGE)-ppc64le
+	$(TT_BIN) images local-scan --user $(TT_USER) --url "$(W3_TT_URL)" --control-group $(TT_CONTROL_GROUP) --imagetype nonprod --iam-api-key "$(TWIST_LOCK_API_KEY)" --output-dir twistlock-scan-output/ppc64le --has-fix-filter Y --output-file image-scan $(IMAGE)-ppc64le
 endif
 	@echo "Scan results:"
 	@echo "------------------------------------------------"
@@ -407,7 +419,7 @@ endif
 	@echo "------------------------------------------------"
 
 .PHONY: tt-scan-all
-tt-scan-all: tt-scan-amd64 tt-scan-s390x tt-scan-power
+tt-scan-all: tt-scan-amd64 tt-scan-s390x tt-scan-ppc64le
 	@echo "All architectures scanned"
 
 ##@ Release targets
@@ -450,34 +462,21 @@ LAST_RC_NUMBER ?= $(shell $(REPO_ROOT)/hack/get-last-rc-number.bash)
 release-candidate-branch: ## Create a release branch (i.e release_v2.2.0)
 	$(REPO_ROOT)/hack/create-branch.bash --type rc $(LAST_RC_NUMBER)
 
-.PHONY: release-tag-push
-release-tag-push: ## Create a release tag for branch
-	$(info BUILD_TYPE = $(BUILD_TYPE))
-ifeq (release , $(BUILD_TYPE))
-	git fetch origin --tags --quiet
-ifeq (, $(shell git rev-parse -q --verify "refs/tags/spyre-v$(VERSION)"))
-	$(info Creating tag 'v$(VERSION)')
-	git tag spyre-v$(VERSION) --annotate -m "Created tag spyre-v$(VERSION)"
-	git push origin tag spyre-v$(VERSION)
-else
-	$(error Tag spyre-v$(VERSION) already exists)
-endif
-else
-	$(error release-tag-push can be executed only for a release build)
-endif
+.PHONY: github-release
+github-release: ## Create a GitHub release for the tag and branch
+	$(REPO_ROOT)/hack/create-gh-release.bash --build-type $(BUILD_TYPE) --version $(VERSION)
 
-.PHONY: create-gh-release
-create-gh-release: ## Create a GitHub release for the tag and branch
-	$(info BUILD_TYPE = $(BUILD_TYPE))
-ifeq (release , $(BUILD_TYPE))
-	git fetch origin --tags --quiet
-	gh release create --verify-tag --latest --generate-notes spyre-v$(VERSION)
-	@echo "Zipping Twistlock scan results for release..."
-	zip -r twistlock-scan-results.zip twistlock-scan-output/
-	gh release upload spyre-v$(VERSION) artifacts/twistlock-scan-results.zip#twistlock-scan-results.zip  --clobber
-else
-	$(error create-gh-release can be executed only for a release build)
-endif
+.PHONY: detect-secrets-install
+detect-secrets-install: venv ## Install detect-secret tool
+	. venv/bin/activate; $(PIP) install "git+$(DETECT_SECRETS_GIT)"
+
+.PHONY: secrets-scan
+secrets-scan: detect-secrets-install venv ## Scan secrets and create secret-baseline for repo
+	. venv/bin/activate; detect-secrets scan --exclude-files go.sum --update .secrets.baseline
+
+.PHONY: secrets-audit
+secrets-audit: detect-secrets-install venv ## Audit secrets
+	. venv/bin/activate; detect-secrets audit .secrets.baseline
 
 # helper target for viewing the value of makefile variables.
 print-%  : ;@echo $* = $($*)

@@ -1,17 +1,9 @@
 #!/bin/bash
-# Copyright 2024.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# +-------------------------------------------------------------------+
+# | Copyright IBM Corp. 2025 All Rights Reserved                      |
+# | PID 5698-SPR                                                      |
+# +-------------------------------------------------------------------+
+
 set -eu -o pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 readonly REPO_ROOT_DIR=${SCRIPT_DIR%/*}
@@ -88,10 +80,19 @@ function make_branch() {
 	fi
 	${GIT} checkout -b ${branch_name}
 
+	if [ -f ${REPO_ROOT_DIR}/.e2e-test-branch ]; then
+		echo ".e2e-test-branch already exists, not overriding it"
+	else
+		echo ${branch_name} >${REPO_ROOT_DIR}/.e2e-test-branch
+		${GIT} add ${REPO_ROOT_DIR}/.e2e-test-branch
+	fi
+
 	if [[ "minor-release" != ${branch_type} ]] && [[ "major-release" != ${branch_type} ]]; then
 		${GIT} add ${REPO_ROOT_DIR}/VERSION
-		${GIT} commit -m "feat: create branch ${branch_name}" --no-verify
 	fi
+
+	${GIT} commit -m "feat: creates release branch ${branch_name}" -m "Creates branch for release v${CURRENT_VERSION}" --no-verify
+
 	is_git_tree_clean # This ensures that we added all items to the commit.
 	${GIT} push --set-upstream origin ${branch_name}
 }
@@ -143,30 +144,31 @@ if [[ ${#POSITIONAL_ARGS[*]} -gt 0 ]]; then
 fi
 
 validate_environment
-is_current_branch_main
 
 case ${BRANCH_TYPE} in
 minor-release)
 	is_git_tree_clean
+	is_current_branch_main
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="release_v${CURRENT_VERSION}"
 	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
 	;;
 major-release)
 	is_git_tree_clean
+	is_current_branch_main
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="release_v${CURRENT_VERSION}"
 	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
 	;;
 patch-release)
 	is_git_tree_clean
+	is_current_branch_main
 	${SCRIPT_DIR}/increment-version.bash --patch
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="release_v${CURRENT_VERSION}"
 	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
 	;;
 rc)
-	is_git_tree_clean
 	${SCRIPT_DIR}/increment-version.bash --rc ${RC_NUMBER}
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="v${CURRENT_VERSION}"
