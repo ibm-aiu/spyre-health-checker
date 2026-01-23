@@ -5,60 +5,44 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
 	server "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/server"
 	types "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
+	"go.uber.org/zap"
 )
 
 var (
 	socket = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
 	timer  = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
-	logDir = flag.String("logdir", "", "Directory to save log events")
-	v      = flag.String("loglevel", "1", "Log level")
 )
 
 func main() {
 	flag.Parse()
 
-	if err := flag.Set("alsologtostderr", "true"); err != nil {
-		glog.Errorf("Error setting alsologtostderr: ", err)
-		os.Exit(1)
-	}
-	if *logDir != "" {
-		if err := flag.Set("log_dir", *logDir); err != nil {
-			glog.Errorf("Error setting log_dir: %v", err)
-			os.Exit(1)
-		}
-	}
-	if err := flag.Set("v", *v); err != nil {
-		glog.Errorf("Error setting v: ", err)
-		os.Exit(1)
-	}
-	if err := flag.Set("logtostderr", "false"); err != nil {
-		glog.Errorf("Error setting logtostderr: ", err)
-		os.Exit(1)
-	}
+	logger := zap.Must(zap.NewDevelopment()).Sugar()
+	defer logger.Sync() //nolint:errcheck
+
+	server.SetLogger(logger)
 
 	vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
 
-	glog.V(1).Infof("loglevel: debug")
 	s := server.NewServer(&vitals)
 
-	glog.V(1).Infof("Starting gRPC server")
+	logger.Infof("Starting gRPC server")
 	if err := s.StartGRPCServer(*socket); err != nil {
-		glog.Fatal(err)
+		logger.Fatal(err)
 	}
 
-	glog.V(1).Infof("Starting timer for periodic checks")
+	logger.Infof("Starting timer for periodic checks")
 	// Parse the repeat and invasive intervals to durations
 	timer, err := utils.ParseInterval(*timer)
 	if err != nil {
-		glog.Errorf("Error parsing repeat interval: ", err)
+		logger.Errorf("Error parsing repeat interval: %v", err)
 		s.Stop()
-		os.Exit(1)
+		_ = logger.Sync()
+		os.Exit(1) //nolint:gocritic
 	}
 	defer s.Stop()
 
@@ -68,7 +52,10 @@ func main() {
 	periodicChecksTicker := time.NewTicker(timer)
 	defer periodicChecksTicker.Stop()
 	for range periodicChecksTicker.C {
-		vitals.UpdateStates()
+		err := vitals.UpdateStates()
+		if err != nil {
+			logger.Warnf("Error calling UpdateState(): %v", err)
+		}
 		s.UpdateHealths(vitals.GetVitalStates())
 		// todo: update prometheus registry data here with status information from vitals structure
 	}
