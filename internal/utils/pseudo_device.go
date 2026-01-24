@@ -20,6 +20,9 @@ var (
 	BadCards = []string{
 		"0000:41:00.0",
 	}
+	VFCards = []string{
+		"0000:44:00.0",
+	}
 )
 
 const (
@@ -37,10 +40,13 @@ func IsPseudoDeviceMode() bool {
 // Pseudo devices are listed from PseudoTopology in pkg/utils/spyre.go.
 func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 	for _, card := range GoodCards {
-		healths = append(healths, types.DeviceState{PciAddress: card, State: pb.DEVICE_STATE_ONLINE})
+		healths = append(healths, types.DeviceState{PciAddress: card, Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE})
 	}
 	for _, card := range BadCards {
-		healths = append(healths, types.DeviceState{PciAddress: card, State: pb.DEVICE_STATE_IN_ERROR})
+		healths = append(healths, types.DeviceState{PciAddress: card, Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_IN_ERROR})
+	}
+	for _, card := range VFCards {
+		healths = append(healths, types.DeviceState{PciAddress: card, Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_ONLINE})
 	}
 	return healths
 }
