@@ -6,6 +6,7 @@ import (
 
 type DeviceState struct {
 	PciAddress string
+	Type       pb.DEVICE_TYPE
 	State      pb.DEVICE_STATE
 }
 
@@ -14,7 +15,7 @@ func (d DeviceState) Device() *pb.Device {
 		DeviceID: &pb.DeviceID{
 			PCIAddress: d.PciAddress,
 		},
-		DeviceType:  pb.DEVICE_TYPE_PF,
+		DeviceType:  d.Type,
 		DeviceState: d.State,
 	}
 }

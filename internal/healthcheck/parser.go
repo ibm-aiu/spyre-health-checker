@@ -219,6 +219,17 @@ func parseLSPCI(output string) []types.DeviceState {
 			state = pb.DEVICE_STATE_ONLINE
 		}
 
+		var devType pb.DEVICE_TYPE
+
+		switch di.VenDevID {
+		case PFVDID:
+			devType = pb.DEVICE_TYPE_PF
+		case VFVDID:
+			devType = pb.DEVICE_TYPE_VF
+		default:
+			devType = pb.DEVICE_TYPE_DEVICE_TYPE_UNSPECIFIED
+		}
+
 		// Check power state, return STATE_OFFLINE if power state is not D0
 		//		if di.DState == "D0" {
 		//			state = pb.DEVICE_STATE_ONLINE
@@ -235,7 +246,7 @@ func parseLSPCI(output string) []types.DeviceState {
 		//			state = pb.DEVICE_STATE_IN_ERROR
 		//		}
 
-		states = append(states, types.DeviceState{PciAddress: di.PCIAddress, State: state})
+		states = append(states, types.DeviceState{PciAddress: di.PCIAddress, Type: devType, State: state})
 	}
 	return states
 }

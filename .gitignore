@@ -33,3 +33,6 @@ unittest-report.json
 
 # IDE files
 .vscode
+
+# Temporary Files
+*.swp

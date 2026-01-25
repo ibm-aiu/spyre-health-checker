@@ -29,12 +29,13 @@ var _ = Describe("Server", Ordered, func() {
 		Eventually(func(g Gomega) {
 			healths := c.GetHealths()
 			g.Expect(healths).NotTo(BeNil())
-			g.Expect(healths).To(HaveLen(8))
+			g.Expect(healths).To(HaveLen(9))
 			for pciAddr, health := range healths {
 				if slices.Contains(utils.BadCards, pciAddr) {
 					Expect(health).To(BeFalse())
 				} else {
 					Expect(slices.Contains(utils.GoodCards, pciAddr))
+					Expect(slices.Contains(utils.VFCards, pciAddr))
 					Expect(health).To(BeTrue())
 				}
 			}
