@@ -42,11 +42,6 @@ function get_current_version() {
 	cat ${REPO_ROOT_DIR}/VERSION
 }
 
-function get_makefile_var_value() {
-	local variable_name="${1}"
-	make -f ${REPO_ROOT_DIR}/Makefile print-${variable_name}
-}
-
 function is_git_tree_clean() {
 	local output=$(${GIT} status --porcelain)
 	if [ ! -z "${output}" ]; then
