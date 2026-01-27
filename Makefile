@@ -4,13 +4,14 @@
 # +-------------------------------------------------------------------+
 
 GOLANG_VERSION		?= $(shell cd $(REPO_ROOT) && go list -f {{.GoVersion}} -m)
-BUILDER_IMAGE		?= registry.access.redhat.com/ubi9/go-toolset:1.24.6-1758501173
+BUILDER_IMAGE		?= registry.access.redhat.com/ubi9/go-toolset:9.6-1754467841
+GOTOOLCHAIN			?= go1.24.11
 MAKEFILE_PATH		:= $(abspath $(lastword $(MAKEFILE_LIST)))
-REPO_ROOT 			:= $(abspath $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
+REPO_ROOT			:= $(abspath $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
 CURRENT_DIR			:= $(shell pwd)
 VERSION				= $(shell $(REPO_ROOT)/hack/get-version.bash $(shell cat $(REPO_ROOT)/VERSION))
 REGISTRY			?= icr.io
-NAMESPACE			?= ibmaiu_internal
+NAMESPACE			= ibmaiu_internal
 DOCKER				?= $(shell command -v podman 2> /dev/null || echo docker)
 DOCKERFILE			= $(REPO_ROOT)/Dockerfile
 DOCKER_BUILD_OPTS	?= --progress=plain
@@ -19,6 +20,7 @@ IMAGE_NAME 			:= $(REGISTRY)/$(NAMESPACE)/spyre-health-checker
 IMAGE_TAG 			?= $(VERSION)
 IMAGE 				?= $(IMAGE_NAME):$(IMAGE_TAG)
 TEST_IMG			?= $(IMAGE_NAME):dev
+CODECOV_PERCENT		?= 45
 
 KUBECTL              ?= $(shell command -v oc 2> /dev/null || echo kubectl)
 OC                   ?= $(shell command -v oc)
@@ -54,19 +56,20 @@ GOVULCHECK		?= $(LOCALBIN)/govulncheck
 GINKGO			?= $(LOCALBIN)/ginkgo
 YQ				?= $(LOCALBIN)/yq
 
-# detect-secrets
-DETECT_SECRETS_GIT ?= "https://github.com/ibm/detect-secrets.git@master\#egg=detect-secrets"
 
 ## Tool Versions
-ENVTEST_K8S_VERSION			?= 1.31
-GOLANGCI_LINT_VERSION		?= 1.64.8
-GINKGO_VERSION				?= v2.25.1
-YQ_VERSION 					?= v4.29.2
+ENVTEST_K8S_VERSION		?= 1.31
+GOLANGCI_LINT_VERSION	?= 1.64.8
+GINKGO_VERSION			?= v2.25.1
+YQ_VERSION				?= v4.29.2
 
 # Shamesly copied from: https://github.com/opendatahub-io/opendatahub-operator/blob/a08c94a226585e43387ad263e2653c0fd43130f1/Makefile#L132C1-L139C1
 define go-mod-version
 $(shell go mod graph | grep $(1) | head -n 1 | cut -d'@' -f 2)
 endef
+
+# detect-secrets
+DETECT_SECRETS_GIT ?= "https://github.com/ibm/detect-secrets.git@master\#egg=detect-secrets"
 
 DOCKER_GO_BUILD_FLAGS ?=
 BUILD_TYPE = $(shell $(REPO_ROOT)/hack/get-build-type.bash)
@@ -96,10 +99,6 @@ endif
 # https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
 # More info on the awk command:
 # http://linuxcommand.org/lc3_adv_awk.php
-
-.PHONY: all
-all: build ## Build all defined targets
-
 
 .PHONY: help
 help: ## Display this help.
@@ -145,10 +144,21 @@ venv: ## Setup and activate venv
 
 ##@ Test targets
 
+COVERAGE_FILE := coverage.out
 .PHONY: test
 test: envtest ginkgo vendor checks ## Run unit tests
-	$(CGO_FLAGS) $(GINKGO) -r --cover --coverprofile=coverage-report.out --race --json-report unittest-report.json -v ./...
-	./hack/convert-to-markdown.sh unittest-report "Unit Tests"
+	$(CGO_FLAGS) $(GINKGO) -r --cover --coverprofile=$(COVERAGE_FILE) --race --json-report unittest-report.json -v ./...
+	PATH=${PATH}:$(LOCALBIN) $(REPO_ROOT)/hack/convert-to-markdown.sh unittest-report "Unit Tests"
+	go tool cover -func $(COVERAGE_FILE)
+	go tool cover -html $(COVERAGE_FILE) -o coverage-report.html
+	@percentage=$$(go tool cover -func=$(COVERAGE_FILE) | grep ^total | awk '{print $$3}' | tr -d '%'); \
+		if (( $$(echo "$$percentage < $(CODECOV_PERCENT)" | bc -l) )); then \
+			echo "----------"; \
+			echo "Total test coverage ($${percentage}%) is less than the coverage threshold ($(CODECOV_PERCENT)%)."; \
+			exit 1; \
+		else \
+			echo "Total test coverage ($${percentage}%) is more than the coverage threshold ($(CODECOV_PERCENT)%)."; \
+		fi
 
 ##@ Development Targets
 
@@ -362,8 +372,8 @@ tt-install: $(TT_BIN) ## Download and install Twistlock scanner (tt)
 $(TT_BIN): $(LOCALBIN)
 	@echo "Downloading tt for Linux x86_64..."
 	curl -u "$(ARTIFACTORY_USER):$(ARTIFACTORY_PASS)" \
-	     --silent --fail --location "$(TT_URL)" \
-	     --output $(LOCALBIN)/tt_latest.zip
+		 --silent --fail --location "$(TT_URL)" \
+		 --output $(LOCALBIN)/tt_latest.zip
 	unzip -qo $(LOCALBIN)/tt_latest.zip -d $(LOCALBIN) > /dev/null
 	chmod 755 $(TT_BIN)
 	$(TT_BIN) check-dependencies > /dev/null
