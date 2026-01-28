@@ -22,7 +22,7 @@ func (v *Vitals) GetVitalStates() []types.DeviceState {
 
 // runLSPCI executes the `lspci` command and stores the output.
 func (v *Vitals) runLSPCI() ([]types.DeviceState, error) {
-	out, err := exec.Command("sh", "-c", "lspci -vvvnn").CombinedOutput()
+	out, err := exec.Command("sh", "-c", "lspci -vvvnn 2>/dev/null").CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to run lspci: %v", err)
 	}
