@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -8,6 +9,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
 )
 
 func TestHealthCheck(t *testing.T) {
@@ -16,8 +19,11 @@ func TestHealthCheck(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	os.Setenv(utils.PseudoDeviceModeKey, "1")
+
 	log.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 })
 
 var _ = AfterSuite(func() {
+	os.Unsetenv(utils.PseudoDeviceModeKey)
 })

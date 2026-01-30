@@ -5,6 +5,10 @@ Health Checker for AIU Spyre Cards
 > [!NOTE]
 > This README is temporary, just to show this initial setup.
 
+## Requirements
+
+The health checker requires the `lspci` command to gather information on Spyre cards.
+
 ## Simple setup
 
 This client-server system, using gRPC streaming, is the simplest implementation of what can be found in the `aiu-device-plugin:sunya-ch/auto-pilot-integration` branch. The server runs on `localhost:50051`.
