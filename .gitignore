@@ -30,6 +30,7 @@ bin
 
 # Generated files
 unittest-report.json
+coverage-report.html
 
 # IDE files
 .vscode
