@@ -275,8 +275,6 @@ pipeline {
 			}
 		}
 		*/
-		/* TODO: enable e2e tests when the operator builds have been updated to
-			accept the component
 		stage ('Run e2e test') {
 			when {
 				not {
@@ -288,21 +286,32 @@ pipeline {
 					}
 				}
 			}
+			environment {
+				HEALTH_CHECKER_TAG = sh(returnStdout: true, script: 'make echo-version').trim()
+			}
 			parallel {
 				stage('Run e2e test for amd64') {
 					steps {
-						build job: 'aiu-operator-pipelines/crc-aiu-operator-end-to-end-test',
-							parameters: [
-								string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
-							]
+						script {
+							def e2eBranch = sh(script:'if [ -f .e2e-test-branch ]; then cat .e2e-test-branch; else echo "main"; fi',
+											returnStdout: true).trim()
+							build job: 'aiu-operator-pipelines/crc-aiu-operator-end-to-end-test',
+								parameters: [
+									string(name: 'BRANCH_NAME', value:  "${e2eBranch}"),
+									string(name: 'HEALTH_CHECKER_TAG', value: "${env.HEALTH_CHECKER_TAG}")
+								]
+						}
 					}
 				}
 				stage('Run e2e test for s390x') {
 					steps {
 						script {
+							def e2eBranch = sh(script:'if [ -f .e2e-test-branch ]; then cat .e2e-test-branch; else echo "main"; fi',
+											returnStdout: true).trim()
 							build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-s390x',
 								parameters: [
-									string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+									string(name: 'BRANCH_NAME', value:  "${e2eBranch}"),
+									string(name: 'HEALTH_CHECKER_TAG', value: "${env.HEALTH_CHECKER_TAG}")
 								]
 						}
 					}
@@ -310,16 +319,18 @@ pipeline {
 				stage('Run e2e test for power') {
 					steps {
 						script {
+							def e2eBranch = sh(script:'if [ -f .e2e-test-branch ]; then cat .e2e-test-branch; else echo "main"; fi',
+											returnStdout: true).trim()
 							build job: 'aiu-operator-pipelines/aiu-operator-e2e-test-ppc64le',
 								parameters: [
-									string(name: 'BRANCH_NAME',     value: "${env.BRANCH_NAME}"),
+									string(name: 'BRANCH_NAME', value:  "${e2eBranch}"),
+									string(name: 'HEALTH_CHECKER_TAG', value: "${env.HEALTH_CHECKER_TAG}")
 								]
 						}
 					}
 				}
 			}
 		}
-		*/
 		stage('Create GH release') {
 			when {
 				anyOf {
