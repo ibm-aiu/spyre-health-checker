@@ -1,10 +1,14 @@
 package server
 
 import (
+	"context"
+	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
@@ -43,6 +47,8 @@ type healthServer struct {
 	socket      string
 	vitals      *healthcheck.Vitals
 	streaming   atomic.Bool
+	httpServer  *http.Server
+	ready       atomic.Bool
 }
 
 func NewServer(v *healthcheck.Vitals) *healthServer {
@@ -55,6 +61,7 @@ func NewServer(v *healthcheck.Vitals) *healthServer {
 		updateQueue: make(chan []types.DeviceState),
 		vitals:      v,
 	}
+	s.ready.Store(false)
 	return &s
 }
 
@@ -84,6 +91,48 @@ func (s *healthServer) StartGRPCServer(socket string) error {
 		}
 	}()
 	s.socket = socket
+	s.ready.Store(true)
+	return nil
+}
+
+// StartHTTPServer starts the HTTP server for health check endpoints
+func (s *healthServer) StartHTTPServer(port int) error {
+	mux := http.NewServeMux()
+
+	// Liveness probe - always returns 200 if server is running
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := fmt.Fprintf(w, "OK"); err != nil {
+			getLogger().Warnf("failed to write healthz response: %v", err)
+		}
+	})
+
+	// Readiness probe - returns 200 only if gRPC server is ready
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if s.ready.Load() {
+			w.WriteHeader(http.StatusOK)
+			if _, err := fmt.Fprintf(w, "Ready"); err != nil {
+				getLogger().Warnf("failed to write readyz response: %v", err)
+			}
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if _, err := fmt.Fprintf(w, "Not Ready"); err != nil {
+				getLogger().Warnf("failed to write readyz response: %v", err)
+			}
+		}
+	})
+
+	s.httpServer = &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
+	}
+
+	go func() {
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			getLogger().Errorf("HTTP server error: %v", err)
+		}
+	}()
+
 	return nil
 }
 
@@ -129,7 +178,18 @@ func (s *healthServer) UpdateHealths(states []types.DeviceState) {
 }
 
 func (s *healthServer) Stop() {
+	s.ready.Store(false)
 	close(s.updateQueue)
+
+	// Shutdown HTTP server gracefully
+	if s.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			getLogger().Errorf("HTTP server shutdown error: %v", err)
+		}
+	}
+
 	if err := safeRemove(s.socket); err != nil {
 		getLogger().Errorf("failed to remove present %s: %v", s.socket, err)
 	}

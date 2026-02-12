@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	socket = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
-	timer  = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
+	socket   = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
+	timer    = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
+	httpPort = flag.Int("http-port", 8080, "HTTP port for health check endpoints of server")
 )
 
 func main() {
@@ -32,6 +33,11 @@ func main() {
 
 	logger.Infof("Starting gRPC server")
 	if err := s.StartGRPCServer(*socket); err != nil {
+		logger.Fatal(err)
+	}
+
+	logger.Infof("Starting HTTP health check server on port %d", *httpPort)
+	if err := s.StartHTTPServer(*httpPort); err != nil {
 		logger.Fatal(err)
 	}
 
