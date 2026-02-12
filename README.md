@@ -29,6 +29,21 @@ The server periodically runs health checks:
 The periodic check timer can be set via command line parameter
 in the format h-m-s, such as `5s` or `1h40m`.
 
+## Indicators of Spyre Card Health
+
+Indicators of Spyre card health include the following:
+- First according to `lspci -vvvnn` output, the following pci devices are fildered out:
+    - devices where vendor:device ID for the device is neither `1014:06a7` nor `1014:06a8`.
+    - devices where 'REV' is not `01`.
+- If `REV` is `ff` then set device status to `DEVICE_STATE_IN_ERROR`
+- If os.Stat() for the device driver fails for any reason, including timeout, set the device status to `DEVICE_STATE_IN_ERROR`
+
+Although not implemented at the moment the following could be taken into consideration:
+
+- If state is not `D0`, the card could be considered to be offline.
+- If flags such as `SERR+`, `TAbort+`, `MAbort+` or `FatalErr+` are set, the card could be considered to be in an state.
+- The existence of a correct driver as reported by `lspci` could be considered.
+
 ## Build and run the server
 
 First try linting:
