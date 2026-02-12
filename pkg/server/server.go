@@ -141,7 +141,7 @@ func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 	log := getLogger()
 	log.Infof("register health stream")
 	devices := pb.Devices{
-		Devices: s.getPbDevices(s.vitals.States),
+		Devices: s.getPbDevices(s.vitals.GetVitalStates()),
 	}
 	if err := stream.Send(&devices); err != nil {
 		return err
