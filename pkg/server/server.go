@@ -169,6 +169,101 @@ func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 	}
 }
 
+func (s *healthServer) RegisterForSpyreDevicesEventsWithDevices(initialDevices *pb.Devices,
+	stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsWithDevicesServer) error {
+	log := getLogger()
+	log.Infof("register health stream with initial devices")
+
+	// Build a map of initial device PCI addresses for quick lookup
+	initialDeviceMap := make(map[string]bool)
+	if initialDevices != nil && len(initialDevices.Devices) > 0 {
+		for _, device := range initialDevices.Devices {
+			if device.DeviceID != nil {
+				initialDeviceMap[device.DeviceID.PCIAddress] = true
+			}
+		}
+		log.Infof("tracking %d initial devices for removal detection", len(initialDeviceMap))
+	}
+
+	// Get current states and check for removed devices
+	currentStates := s.vitals.GetVitalStates()
+	statesToSend := s.checkForRemovedDevices(currentStates, initialDeviceMap)
+
+	// Set streaming flag before sending first message to avoid race condition
+	s.streaming.Store(true)
+	defer s.streaming.Store(false)
+
+	devices := pb.Devices{
+		Devices: s.getPbDevices(statesToSend),
+	}
+	if err := stream.Send(&devices); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case states, ok := <-s.updateQueue:
+			if !ok {
+				log.Warnf("update channel is not OK, end connection")
+				return nil
+			}
+			// Check for removed devices in updates and update the tracking map with new devices
+			statesToSend := s.checkForRemovedDevices(states, initialDeviceMap)
+
+			// Add any new devices to the tracking map so they won't be marked as REMOVED later
+			for _, state := range states {
+				if !initialDeviceMap[state.PciAddress] {
+					initialDeviceMap[state.PciAddress] = true
+					log.Infof("added new device %s to tracking map", state.PciAddress)
+				}
+			}
+
+			devices := pb.Devices{
+				Devices: s.getPbDevices(statesToSend),
+			}
+			if err := stream.Send(&devices); err != nil {
+				log.Warnf("failed to send, end connection")
+				return nil
+			}
+			log.Infof("send %v", statesToSend)
+		}
+	}
+}
+
+// checkForRemovedDevices compares current states with initial devices and marks missing ones as REMOVED
+func (s *healthServer) checkForRemovedDevices(currentStates []types.DeviceState, initialDeviceMap map[string]bool) []types.DeviceState {
+	if len(initialDeviceMap) == 0 {
+		// No initial devices to track, return current states as-is
+		return currentStates
+	}
+
+	// Create a map of current device PCI addresses
+	currentDeviceMap := make(map[string]bool)
+	for _, state := range currentStates {
+		currentDeviceMap[state.PciAddress] = true
+	}
+
+	// Start with current states
+	result := make([]types.DeviceState, len(currentStates))
+	copy(result, currentStates)
+
+	// Check for devices in initial list that are missing from current states
+	for pciAddr := range initialDeviceMap {
+		if !currentDeviceMap[pciAddr] {
+			// Device was in initial list but is now missing - mark as REMOVED
+			result = append(result, types.DeviceState{
+				PciAddress: pciAddr,
+				Type:       pb.DEVICE_TYPE_DEVICE_TYPE_UNSPECIFIED,
+				State:      pb.DEVICE_STATE_REMOVED,
+			})
+		}
+	}
+
+	return result
+}
+
 func (s *healthServer) UpdateHealths(states []types.DeviceState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
