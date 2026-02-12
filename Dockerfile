@@ -53,5 +53,8 @@ LABEL description="See summary"
 COPY --from=builder /build/spyre-health-checker /usr/bin/spyre-health-checker
 COPY --from=builder /tmp/ubi-micro/ /
 
+# Expose HTTP health check port of server
+EXPOSE 8080
+
 ENTRYPOINT [ "/usr/bin/spyre-health-checker" ]
 HEALTHCHECK NONE
