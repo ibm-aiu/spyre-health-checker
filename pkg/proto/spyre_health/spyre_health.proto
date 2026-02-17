@@ -11,6 +11,11 @@ service SpyreHealthService {
     // RegisterForSpyreDevicesEvents returns a stream of Devices messages on the change of state of
     // the devices present in on the nodes
     rpc RegisterForSpyreDevicesEvents(google.protobuf.Empty) returns (stream Devices);
+
+    // RegisterForSpyreDevicesEventsWithDevices returns a stream of Devices messages on the change of state.
+    // Accepts an initial list of devices to track for removal.
+    // Devices missing from the initial list will be marked with REMOVED state.
+    rpc RegisterForSpyreDevicesEventsWithDevices(Devices) returns (stream Devices);
 }
 
 // Device defines an AIU device with its ID (PCI buses address),
@@ -51,4 +56,5 @@ enum DEVICE_STATE {
     ONLINE              = 4;       // The device initialization is complete
     RUNNING_DIAGNOSTICS = 5;       // The device is a running diagnostics
     IN_ERROR            = 6;       // The device is a non-running state
+    REMOVED             = 7;       // The device is missing from the initial state
 }

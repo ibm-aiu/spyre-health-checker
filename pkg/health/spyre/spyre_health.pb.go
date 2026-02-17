@@ -86,6 +86,7 @@ const (
 	DEVICE_STATE_ONLINE              DEVICE_STATE = 4 // The device initialization is complete
 	DEVICE_STATE_RUNNING_DIAGNOSTICS DEVICE_STATE = 5 // The device is a running diagnostics
 	DEVICE_STATE_IN_ERROR            DEVICE_STATE = 6 // The device is a non-running state
+	DEVICE_STATE_REMOVED             DEVICE_STATE = 7 // The device is missing from the initial state
 )
 
 // Enum value maps for DEVICE_STATE.
@@ -98,6 +99,7 @@ var (
 		4: "ONLINE",
 		5: "RUNNING_DIAGNOSTICS",
 		6: "IN_ERROR",
+		7: "REMOVED",
 	}
 	DEVICE_STATE_value = map[string]int32{
 		"DEVICE_STATE_UNSPECIFIED": 0,
@@ -107,6 +109,7 @@ var (
 		"ONLINE":                   4,
 		"RUNNING_DIAGNOSTICS":      5,
 		"IN_ERROR":                 6,
+		"REMOVED":                  7,
 	}
 )
 
@@ -327,7 +330,7 @@ const file_spyre_health_proto_rawDesc = "" +
 	"\vDEVICE_TYPE\x12\x1b\n" +
 	"\x17DEVICE_TYPE_UNSPECIFIED\x10\x00\x12\x06\n" +
 	"\x02VF\x10\x01\x12\x06\n" +
-	"\x02PF\x10\x02*\x8c\x01\n" +
+	"\x02PF\x10\x02*\x99\x01\n" +
 	"\fDEVICE_STATE\x12\x1c\n" +
 	"\x18DEVICE_STATE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aOFFLINE\x10\x01\x12\v\n" +
@@ -336,9 +339,11 @@ const file_spyre_health_proto_rawDesc = "" +
 	"\n" +
 	"\x06ONLINE\x10\x04\x12\x17\n" +
 	"\x13RUNNING_DIAGNOSTICS\x10\x05\x12\f\n" +
-	"\bIN_ERROR\x10\x062Y\n" +
+	"\bIN_ERROR\x10\x06\x12\v\n" +
+	"\aREMOVED\x10\a2\x9b\x01\n" +
 	"\x12SpyreHealthService\x12C\n" +
-	"\x1dRegisterForSpyreDevicesEvents\x12\x16.google.protobuf.Empty\x1a\b.Devices0\x01B\x12Z\x10pkg/health/spyreb\x06proto3"
+	"\x1dRegisterForSpyreDevicesEvents\x12\x16.google.protobuf.Empty\x1a\b.Devices0\x01\x12@\n" +
+	"(RegisterForSpyreDevicesEventsWithDevices\x12\b.Devices\x1a\b.Devices0\x01B\x12Z\x10pkg/health/spyreb\x06proto3"
 
 var (
 	file_spyre_health_proto_rawDescOnce sync.Once
@@ -370,9 +375,11 @@ var file_spyre_health_proto_depIdxs = []int32{
 	5, // 3: Device.updateTimestamp:type_name -> google.protobuf.Timestamp
 	2, // 4: Devices.devices:type_name -> Device
 	6, // 5: SpyreHealthService.RegisterForSpyreDevicesEvents:input_type -> google.protobuf.Empty
-	3, // 6: SpyreHealthService.RegisterForSpyreDevicesEvents:output_type -> Devices
-	6, // [6:7] is the sub-list for method output_type
-	5, // [5:6] is the sub-list for method input_type
+	3, // 6: SpyreHealthService.RegisterForSpyreDevicesEventsWithDevices:input_type -> Devices
+	3, // 7: SpyreHealthService.RegisterForSpyreDevicesEvents:output_type -> Devices
+	3, // 8: SpyreHealthService.RegisterForSpyreDevicesEventsWithDevices:output_type -> Devices
+	7, // [7:9] is the sub-list for method output_type
+	5, // [5:7] is the sub-list for method input_type
 	5, // [5:5] is the sub-list for extension type_name
 	5, // [5:5] is the sub-list for extension extendee
 	0, // [0:5] is the sub-list for field type_name

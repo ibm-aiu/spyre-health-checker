@@ -20,7 +20,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SpyreHealthService_RegisterForSpyreDevicesEvents_FullMethodName = "/SpyreHealthService/RegisterForSpyreDevicesEvents"
+	SpyreHealthService_RegisterForSpyreDevicesEvents_FullMethodName            = "/SpyreHealthService/RegisterForSpyreDevicesEvents"
+	SpyreHealthService_RegisterForSpyreDevicesEventsWithDevices_FullMethodName = "/SpyreHealthService/RegisterForSpyreDevicesEventsWithDevices"
 )
 
 // SpyreHealthServiceClient is the client API for SpyreHealthService service.
@@ -33,6 +34,10 @@ type SpyreHealthServiceClient interface {
 	// RegisterForSpyreDevicesEvents returns a stream of Devices messages on the change of state of
 	// the devices present in on the nodes
 	RegisterForSpyreDevicesEvents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Devices], error)
+	// RegisterForSpyreDevicesEventsWithDevices returns a stream of Devices messages on the change of state.
+	// Accepts an initial list of devices to track for removal.
+	// Devices missing from the initial list will be marked with REMOVED state.
+	RegisterForSpyreDevicesEventsWithDevices(ctx context.Context, in *Devices, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Devices], error)
 }
 
 type spyreHealthServiceClient struct {
@@ -62,6 +67,25 @@ func (c *spyreHealthServiceClient) RegisterForSpyreDevicesEvents(ctx context.Con
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SpyreHealthService_RegisterForSpyreDevicesEventsClient = grpc.ServerStreamingClient[Devices]
 
+func (c *spyreHealthServiceClient) RegisterForSpyreDevicesEventsWithDevices(ctx context.Context, in *Devices, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Devices], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &SpyreHealthService_ServiceDesc.Streams[1], SpyreHealthService_RegisterForSpyreDevicesEventsWithDevices_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[Devices, Devices]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SpyreHealthService_RegisterForSpyreDevicesEventsWithDevicesClient = grpc.ServerStreamingClient[Devices]
+
 // SpyreHealthServiceServer is the server API for SpyreHealthService service.
 // All implementations must embed UnimplementedSpyreHealthServiceServer
 // for forward compatibility.
@@ -72,6 +96,10 @@ type SpyreHealthServiceServer interface {
 	// RegisterForSpyreDevicesEvents returns a stream of Devices messages on the change of state of
 	// the devices present in on the nodes
 	RegisterForSpyreDevicesEvents(*emptypb.Empty, grpc.ServerStreamingServer[Devices]) error
+	// RegisterForSpyreDevicesEventsWithDevices returns a stream of Devices messages on the change of state.
+	// Accepts an initial list of devices to track for removal.
+	// Devices missing from the initial list will be marked with REMOVED state.
+	RegisterForSpyreDevicesEventsWithDevices(*Devices, grpc.ServerStreamingServer[Devices]) error
 	mustEmbedUnimplementedSpyreHealthServiceServer()
 }
 
@@ -84,6 +112,9 @@ type UnimplementedSpyreHealthServiceServer struct{}
 
 func (UnimplementedSpyreHealthServiceServer) RegisterForSpyreDevicesEvents(*emptypb.Empty, grpc.ServerStreamingServer[Devices]) error {
 	return status.Error(codes.Unimplemented, "method RegisterForSpyreDevicesEvents not implemented")
+}
+func (UnimplementedSpyreHealthServiceServer) RegisterForSpyreDevicesEventsWithDevices(*Devices, grpc.ServerStreamingServer[Devices]) error {
+	return status.Error(codes.Unimplemented, "method RegisterForSpyreDevicesEventsWithDevices not implemented")
 }
 func (UnimplementedSpyreHealthServiceServer) mustEmbedUnimplementedSpyreHealthServiceServer() {}
 func (UnimplementedSpyreHealthServiceServer) testEmbeddedByValue()                            {}
@@ -117,6 +148,17 @@ func _SpyreHealthService_RegisterForSpyreDevicesEvents_Handler(srv interface{}, 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SpyreHealthService_RegisterForSpyreDevicesEventsServer = grpc.ServerStreamingServer[Devices]
 
+func _SpyreHealthService_RegisterForSpyreDevicesEventsWithDevices_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Devices)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SpyreHealthServiceServer).RegisterForSpyreDevicesEventsWithDevices(m, &grpc.GenericServerStream[Devices, Devices]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SpyreHealthService_RegisterForSpyreDevicesEventsWithDevicesServer = grpc.ServerStreamingServer[Devices]
+
 // SpyreHealthService_ServiceDesc is the grpc.ServiceDesc for SpyreHealthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -128,6 +170,11 @@ var SpyreHealthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "RegisterForSpyreDevicesEvents",
 			Handler:       _SpyreHealthService_RegisterForSpyreDevicesEvents_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "RegisterForSpyreDevicesEventsWithDevices",
+			Handler:       _SpyreHealthService_RegisterForSpyreDevicesEventsWithDevices_Handler,
 			ServerStreams: true,
 		},
 	},
