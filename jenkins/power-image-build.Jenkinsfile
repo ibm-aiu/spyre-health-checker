@@ -22,7 +22,7 @@ pipeline {
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
 		PATH = "${env.PATH}:/var/jenkins-home/go/bin"
 		GOPRIVATE = 'github.ibm.com/ai-chip-toolchain/*,github.ibm.com/ai-foundation/*'
-		GOTOOLCHAIN = 'go1.24.11'
+		GOTOOLCHAIN = 'go1.24.13'
 		DOCKER = "podman"
 	}
 	stages {

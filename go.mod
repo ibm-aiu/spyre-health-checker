@@ -1,6 +1,6 @@
 module github.ibm.com/ai-chip-toolchain/spyre-health-checker
 
-go 1.24.11
+go 1.24.13
 
 require (
 	github.com/go-logr/zapr v1.3.0
