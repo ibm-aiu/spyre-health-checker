@@ -5,7 +5,7 @@
 
 GOLANG_VERSION		?= $(shell cd $(REPO_ROOT) && go list -f {{.GoVersion}} -m)
 BUILDER_IMAGE		?= registry.access.redhat.com/ubi9/go-toolset:9.6-1754467841
-GOTOOLCHAIN			?= go1.24.11
+GOTOOLCHAIN			?= go1.24.13
 MAKEFILE_PATH		:= $(abspath $(lastword $(MAKEFILE_LIST)))
 REPO_ROOT			:= $(abspath $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
 CURRENT_DIR			:= $(shell pwd)
