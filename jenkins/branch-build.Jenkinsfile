@@ -83,11 +83,10 @@ pipeline {
 						sh 'make vendor build lint'
 					}
 				}
-				/* TODO Enable stage once a proper keys has been established
 				stage('Run sonar qube scan for PR') {
 					steps {
 						script {
-							jobResult = build(job: 'aiu-operator-pipelines/spyre-device-plugin-sonar-qube-scan',
+							jobResult = build(job: 'aiu-operator-pipelines/spyre-health-checker-sonar-qube-scan',
 										propagate:false,
 										parameters: [
 											string(name: 'BRANCH_NAME', value: "${env.CHANGE_BRANCH}"),
@@ -102,7 +101,6 @@ pipeline {
 						}
 					}
 				}
-				*/
 			}
 		}
 		stage('Run detect-secrets') {
