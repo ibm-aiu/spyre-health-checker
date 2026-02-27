@@ -22,7 +22,7 @@ pipeline {
 	}
 	environment {
 		GH_CREDENTIALS=credentials('aiu.operator.github.api.credential')
-		SONARQUBE_API_TOKEN=credentials('aiu.operator.sonar.qube.api.credential')
+		SONARQUBE_API_TOKEN=credentials('wxpe-aiu.sonar.cube.api.key.credential')
 		SONARQUBE_CERTS_PASSWORD=credentials('spyre.operator.sonar.qube.certs.password')
 	}
 	stages {

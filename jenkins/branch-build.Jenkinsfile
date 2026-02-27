@@ -1,5 +1,6 @@
 // +-------------------------------------------------------------------+
 // | Copyright IBM Corp. 2025 All Rights Reserved                      |
+// | PID 5698-SPR                                                      |
 // +-------------------------------------------------------------------+
 
 pipeline {
@@ -146,7 +147,7 @@ pipeline {
 						stage('Build amd64 images') {
 							steps {
 								sh '''
-								make docker-build-amd64
+								make docker-build-amd64 docker-push-amd64
 								'''
 							}
 						}
@@ -247,7 +248,6 @@ pipeline {
 				}
 			}
 		}
-		/* TODO: Enable stage once we have a proper key
 		stage('Run SonarQube scan for default or release branch') {
 			when {
 				anyOf {
@@ -258,7 +258,7 @@ pipeline {
 			}
 			steps {
 				script {
-					jobResult = build(job: 'aiu-operator-pipelines/spyre-device-plugin-sonar-qube-scan',
+					jobResult = build(job: 'aiu-operator-pipelines/spyre-health-checker-sonar-qube-scan',
 							propagate:false,
 							parameters: [
 								string(name: 'BRANCH_NAME', value: "${env.BRANCH_NAME}"),
@@ -272,7 +272,6 @@ pipeline {
 				}
 			}
 		}
-		*/
 		stage ('Run e2e test') {
 			when {
 				not {
@@ -324,6 +323,20 @@ pipeline {
 									string(name: 'BRANCH_NAME', value:  "${e2eBranch}"),
 									string(name: 'HEALTH_CHECKER_TAG', value: "${env.HEALTH_CHECKER_TAG}")
 								]
+						}
+					}
+				}
+			}
+		}
+		stage('Run integration tests') {
+			when {
+				branch 'main'
+			}
+			stages {
+				stage('Run all architecture integration job') {
+					steps {
+						script {
+							build job: 'aiu-operator-pipelines/aiu-operator-integration-test-all'
 						}
 					}
 				}
