@@ -18,6 +18,7 @@ function usage() {
 	echo "Usage: ${0} flags"
 	echo "Flags:"
 	echo "  -t, --type version-upgrade|minor-release|major-release|patch-release|rc <old release candidate number>  creates a release branch"
+	echo "  -d, --dry-run run the script, do not push the branch"
 	echo "  -h, --help prints this message"
 	exit 2
 }
@@ -43,6 +44,9 @@ function get_current_version() {
 }
 
 function is_git_tree_clean() {
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
+		return
+	fi
 	local output=$(${GIT} status --porcelain)
 	if [ ! -z "${output}" ]; then
 		echo "The git working tree has uncommitted files."
@@ -52,14 +56,43 @@ function is_git_tree_clean() {
 }
 
 function is_current_branch_main() {
-	if [[ $(${GIT} rev-parse --abbrev-ref HEAD) != "main" ]]; then
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
+		return
+	fi
+	local branch_name=${GIT_BRANCH_NAME:-}
+	if [[ -z ${branch_name} ]]; then
+		branch_name=$(git branch --show-current)
+	fi
+	if [[ -z ${branch_name} ]]; then
+		branch_name=$(git rev-parse --abbrev-ref HEAD)
+	fi
+
+	if [[ ${branch_name} != "main" ]]; then
 		echo "Must be on main branch to execute this script"
 		exit 1
 	fi
 }
+
+function is_current_branch_release() {
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
+		return
+	fi
+	local branch_name=${GIT_BRANCH_NAME:-}
+	if [[ -z ${branch_name} ]]; then
+		branch_name=$(git branch --show-current)
+	fi
+	if [[ -z ${branch_name} ]]; then
+		branch_name=$(git rev-parse --abbrev-ref HEAD)
+	fi
+	if [[ ! ${branch_name} =~ ^release_v[0-9]+(\.[0-9]+)+$ ]]; then
+		echo "Must be on a release branch to execute this script"
+		exit 1
+	fi
+}
+
 function make_branch() {
 	local branch_name=${1}
-	local branch_type=${2}
+	local release_type=${2}
 
 	echo "Making branch '${branch_name}' for version: '${CURRENT_VERSION}'"
 	${GIT} fetch --quiet origin
@@ -75,20 +108,19 @@ function make_branch() {
 	fi
 	${GIT} checkout -b ${branch_name}
 
-	if [ -f ${REPO_ROOT_DIR}/.e2e-test-branch ]; then
-		echo ".e2e-test-branch already exists, not overriding it"
-	else
-		echo ${branch_name} >${REPO_ROOT_DIR}/.e2e-test-branch
-		${GIT} add ${REPO_ROOT_DIR}/.e2e-test-branch
-	fi
-
-	if [[ "minor-release" != ${branch_type} ]] && [[ "major-release" != ${branch_type} ]]; then
+	echo ${branch_name} >${REPO_ROOT_DIR}/.e2e-test-branch
+	if [[ "minor-release" != ${release_type} ]] && [[ "major-release" != ${release_type} ]]; then
 		${GIT} add ${REPO_ROOT_DIR}/VERSION
 	fi
 
+	${GIT} add ${REPO_ROOT_DIR}/.e2e-test-branch
 	${GIT} commit -m "feat: creates release branch ${branch_name}" -m "Creates branch for release v${CURRENT_VERSION}" --no-verify
 
 	is_git_tree_clean # This ensures that we added all items to the commit.
+
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
+		return
+	fi
 	${GIT} push --set-upstream origin ${branch_name}
 }
 
@@ -101,23 +133,17 @@ declare -a POSITIONAL_ARGS=()
 while [[ $# -gt 0 ]]; do
 	case ${1} in
 	-t | --type)
-		BRANCH_TYPE="${2}"
+		RELEASE_TYPE="${2}"
 		shift # past argument
 		shift # past value
-		if [[ ${BRANCH_TYPE} == "rc" ]]; then
+		if [[ ${RELEASE_TYPE} == "rc" ]]; then
 			RC_NUMBER=$1
 			shift
 		fi
 		;;
-	-r | --registry)
-		REGISTRY="${2}"
+	-d | --dry-run)
+		DRY_RUN="TRUE"
 		shift # past argument
-		shift # past value
-		;;
-	-n | --namespace)
-		REGISTRY="${2}"
-		shift # past argument
-		shift # past value
 		;;
 	-h | --help)
 		usage
@@ -139,43 +165,43 @@ if [[ ${#POSITIONAL_ARGS[*]} -gt 0 ]]; then
 fi
 
 validate_environment
+is_git_tree_clean
 
-case ${BRANCH_TYPE} in
+case ${RELEASE_TYPE} in
 minor-release)
-	is_git_tree_clean
 	is_current_branch_main
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="release_v${CURRENT_VERSION}"
-	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
+	make_branch ${BRANCH_NAME} ${RELEASE_TYPE}
 	;;
 major-release)
-	is_git_tree_clean
 	is_current_branch_main
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="release_v${CURRENT_VERSION}"
-	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
+	make_branch ${BRANCH_NAME} ${RELEASE_TYPE}
 	;;
 patch-release)
-	is_git_tree_clean
-	is_current_branch_main
+	is_current_branch_release
 	${SCRIPT_DIR}/increment-version.bash --patch
 	CURRENT_VERSION=$(get_current_version)
-	BRANCH_NAME="release_v${CURRENT_VERSION}"
-	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
+	BRANCH_NAME="patch_to_v${CURRENT_VERSION}"
+	make_branch ${BRANCH_NAME} ${RELEASE_TYPE}
 	;;
 rc)
+	is_current_branch_main
 	${SCRIPT_DIR}/increment-version.bash --rc ${RC_NUMBER}
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="v${CURRENT_VERSION}"
-	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
+	make_branch ${BRANCH_NAME} ${RELEASE_TYPE}
 	;;
 version-upgrade)
+	is_current_branch_main
 	CURRENT_VERSION=$(get_current_version)
 	BRANCH_NAME="update_to_v${CURRENT_VERSION}"
-	make_branch ${BRANCH_NAME} ${BRANCH_TYPE}
+	make_branch ${BRANCH_NAME} ${RELEASE_TYPE}
 	;;
 *)
-	echo "Unsupported branch type:'${BRANCH_TYPE}'"
+	echo "Unsupported branch type:'${RELEASE_TYPE}'"
 	usage
 	;;
 esac
