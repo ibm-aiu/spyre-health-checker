@@ -9,7 +9,8 @@ GOTOOLCHAIN			?= go1.24.13
 MAKEFILE_PATH		:= $(abspath $(lastword $(MAKEFILE_LIST)))
 REPO_ROOT			:= $(abspath $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
 CURRENT_DIR			:= $(shell pwd)
-VERSION				= $(shell $(REPO_ROOT)/hack/get-version.bash $(shell cat $(REPO_ROOT)/VERSION))
+BASE_VERSION		= $(shell $(REPO_ROOT)/hack/get-version.bash --type base --version $(shell cat $(REPO_ROOT)/VERSION))
+VERSION				= $(shell $(REPO_ROOT)/hack/get-version.bash --type relative --version $(shell cat $(REPO_ROOT)/VERSION))
 REGISTRY			?= icr.io
 NAMESPACE			= ibmaiu_internal
 DOCKER				?= $(shell command -v podman 2> /dev/null || echo docker)
@@ -144,9 +145,16 @@ venv: ## Setup and activate venv
 
 ##@ Test targets
 
+.PHONY: test-shell-scripts
+test-shell-scripts: yq ## Run unit tests for shell scripts.
+	$(REPO_ROOT)/hack/test-get-build-type.bash
+	$(REPO_ROOT)/hack/test-get-version.bash
+	$(REPO_ROOT)/hack/test-create-branch.bash
+
+
 COVERAGE_FILE := coverage.out
 .PHONY: test
-test: envtest ginkgo vendor checks ## Run unit tests
+test: test-shell-scripts envtest ginkgo vendor checks ## Run unit tests
 	$(CGO_FLAGS) $(GINKGO) -r --cover --coverprofile=$(COVERAGE_FILE) --race --json-report unittest-report.json -v ./...
 	PATH=${PATH}:$(LOCALBIN) $(REPO_ROOT)/hack/convert-to-markdown.sh unittest-report "Unit Tests"
 	go tool cover -func $(COVERAGE_FILE)
