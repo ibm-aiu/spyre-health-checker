@@ -75,3 +75,6 @@ repos:
   hooks:
   - id: detect-secrets
     args: [--baseline, .secrets.baseline, --use-all-plugins]
+    additional_dependencies:
+    - boxsdk<4 # https://github.com/IBM/detect-secrets/issues/173
+    - chardet<7 # https://github.com/IBM/detect-secrets/issues/182
