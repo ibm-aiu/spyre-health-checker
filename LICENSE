@@ -4,6 +4,7 @@ The Programs listed below are licensed under the following License Information t
 
 Program Name (Program Number):
 Spyre Operator for IBM Z & IBM LinuxONE v1.2 (5698-SPR)
+IBM Spyre Operator for Power v1.2.0 (5639-SPR)
 
 The following standard terms apply to Licensee's use of the Program.
 
@@ -15,12 +16,19 @@ The following units of measure may apply to Licensee's use of the Program.
 
 Install
 
-Install is a unit of measure by which the Program can be licensed. An Install is an installed copy of the Program on a physical or virtual disk made available to be executed on a computer. Licensee must obtain an entitlement for each Install of the Program.
+Install is a unit of measure by which the Program can be licensed. An Install is an installed copy of the Program on a physical or virtual disk made available to be executed on a computer. Licensee must obtain an entitlement for each Install of the Program. This unit of measure is used by IBM Z & IBM LinuxONE.
 
+Server
+
+Server is a unit of measure by which the Program can be licensed. A server is a physical computer that is comprised of processing units, memory, and input/output capabilities and that executes requested procedures, commands, or applications for one or more users or client devices. Where racks, blade enclosures, or other similar equipment is being employed, each separable physical device (for example, a blade or a rack-mounted device) that has the required components is considered itself a separate server. Licensee must obtain Server entitlements for each server made available to the Program, regardless of the number of processor cores and/or partitions in the server or the number of copies of the Program on the server. This unit of measure is used by IBM Power.
 
 L/N: L-FSFS-AUVUJE
 D/N: GI13-5983-01
 P/N: L-FSFS-AUVUJE
+
+L/N: L-TAKX-TZ7BDB
+D/N: L-TAKX-TZ7BDB
+P/N: L-TAKX-TZ7BDB
 
 International Program License Agreement
 
