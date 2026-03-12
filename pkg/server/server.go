@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"go.uber.org/zap"
@@ -68,7 +70,7 @@ func NewServer(v *healthcheck.Vitals) *healthServer {
 	return &s
 }
 
-func (s *healthServer) StartGRPCServer(socket string) error {
+func (s *healthServer) StartGRPCServer(socket string, tlsCertPath string, tlsKeyPath string) error {
 	var log *zap.SugaredLogger
 	if err := safeRemove(socket); err != nil {
 		log = getLogger()
@@ -83,7 +85,31 @@ func (s *healthServer) StartGRPCServer(socket string) error {
 		log.Errorf("failed to listen: %v", err)
 		return err
 	}
-	grpcServer := grpc.NewServer()
+
+	var opts []grpc.ServerOption
+
+	cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
+	if err != nil {
+		if log == nil {
+			log = getLogger()
+		}
+		return fmt.Errorf("failed to load TLS credentials: %w", err) // pragma: allowlist secret
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	creds := credentials.NewTLS(tlsConfig)
+	opts = append(opts, grpc.Creds(creds))
+
+	if log == nil {
+		log = getLogger()
+	}
+	log.Infof("TLS enabled for gRPC server using cert: %s", tlsCertPath)
+
+	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterSpyreHealthServiceServer(grpcServer, s)
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
