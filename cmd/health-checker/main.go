@@ -21,18 +21,12 @@ func getEnvOrDefault(key, defaultValue string) string {
 }
 
 var (
-<<<<<<< HEAD
 	socket      = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
 	timer       = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
 	healthPort  = flag.Int("health-port", 8080, "HTTP port for server health check endpoints")
 	metricsPort = flag.Int("metrics-port", 8081, "HTTP port for Prometheus compatible card metrics")
-=======
-	socket   = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
-	timer    = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
-	httpPort = flag.Int("http-port", 8080, "HTTP port for health check endpoints of server")
-	tlsCert  = flag.String("tls-cert", getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"), "Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)")
-	tlsKey   = flag.String("tls-key", getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"), "Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)")
->>>>>>> fff5738 (feat: implement mandatory TLS encryption for device plugin communication)
+	tlsCert     = flag.String("tls-cert", getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"), "Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)")
+	tlsKey      = flag.String("tls-key", getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"), "Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)")
 )
 
 func main() {
@@ -47,8 +41,13 @@ func main() {
 
 	s := server.NewServer(&vitals)
 
-	logger.Infof("Starting gRPC server")
-	if err := s.StartGRPCServer(*socket, *tlsCert, *tlsKey); err != nil {
+	logger.Infof("Starting insecure gRPC server")
+	if err := s.StartInsecureGRPCServer(*socket); err != nil {
+		logger.Fatal(err)
+	}
+
+	logger.Infof("Starting secure gRPC server with mTLS")
+	if err := s.StartSecureGRPCServer(*secureSocket, *tlsCert, *tlsKey); err != nil {
 		logger.Fatal(err)
 	}
 
