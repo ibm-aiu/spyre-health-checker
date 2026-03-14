@@ -178,20 +178,20 @@ var _ = Describe("Server", Ordered, func() {
 			Expect(server).NotTo(BeNil())
 		})
 		Describe("HTTP Health Check Endpoints", func() {
-			var httpPort int
+			var healthHttpPort int
 
 			BeforeEach(func() {
-				httpPort = 18080 // Use a different port for testing
+				healthHttpPort = 18080 // Use a different port for testing
 			})
 
 			It("should return 200 OK for /healthz endpoint", func() {
-				err := TestHealthServer.StartHTTPServer(httpPort)
+				err := TestHealthServer.StartHealthHTTPServer(healthHttpPort)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Give the server a moment to start
 				time.Sleep(100 * time.Millisecond)
 
-				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", httpPort))
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", healthHttpPort))
 				Expect(err).NotTo(HaveOccurred())
 				defer resp.Body.Close()
 
@@ -200,7 +200,21 @@ var _ = Describe("Server", Ordered, func() {
 
 			It("should return 200 OK for /readyz endpoint when server is ready", func() {
 				// Server should already be ready from previous tests
-				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/readyz", httpPort))
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/readyz", healthHttpPort))
+				Expect(err).NotTo(HaveOccurred())
+				defer resp.Body.Close()
+
+				Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			})
+
+			It("should return 200 OK for /metrics endpoint", func() {
+				metricsPort := 18081
+				err := TestHealthServer.StartMetricsHTTPServer(metricsPort)
+				Expect(err).NotTo(HaveOccurred())
+
+				time.Sleep(100 * time.Millisecond)
+
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", metricsPort))
 				Expect(err).NotTo(HaveOccurred())
 				defer resp.Body.Close()
 
@@ -212,7 +226,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				for i := 0; i < 10; i++ {
 					go func() {
-						resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", httpPort))
+						resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", healthHttpPort))
 						Expect(err).NotTo(HaveOccurred())
 						defer resp.Body.Close()
 						Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -225,203 +239,202 @@ var _ = Describe("Server", Ordered, func() {
 					Eventually(done).Should(Receive())
 				}
 			})
-
-			Describe("RegisterForSpyreDevicesEventsWithDevices", func() {
-				// Stop the global client before these tests to avoid multiple concurrent streams
-				BeforeEach(func() {
-					c.Stop()
-				})
-
-				// Recreate and restart the global client after these tests
-				AfterEach(func() {
-					c = NewClient()
-					c.Start()
-				})
-
-				It("should detect removed devices", func() {
-					// Create a client that uses the new RPC with initial devices
-					var opts []grpc.DialOption
-					opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-					conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
-					Expect(err).To(BeNil())
-					defer conn.Close()
-
-					client := spyre.NewSpyreHealthServiceClient(conn)
-
-					// Define initial devices - include some that don't exist in current state
-					initialDevices := &spyre.Devices{
-						Devices: []*spyre.Device{
-							{
-								DeviceID: &spyre.DeviceID{
-									PCIAddress: "0000:1a:00.0",
-								},
-								DeviceType:  spyre.DEVICE_TYPE_PF,
-								DeviceState: spyre.DEVICE_STATE_ONLINE,
-							},
-							{
-								DeviceID: &spyre.DeviceID{
-									PCIAddress: "0000:99:00.0", // This device doesn't exist
-								},
-								DeviceType:  spyre.DEVICE_TYPE_PF,
-								DeviceState: spyre.DEVICE_STATE_ONLINE,
-							},
-							{
-								DeviceID: &spyre.DeviceID{
-									PCIAddress: "0000:88:00.0", // This device doesn't exist
-								},
-								DeviceType:  spyre.DEVICE_TYPE_VF,
-								DeviceState: spyre.DEVICE_STATE_ONLINE,
-							},
-						},
-					}
-
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
-
-					stream, err := client.RegisterForSpyreDevicesEventsWithDevices(ctx, initialDevices)
-					Expect(err).To(BeNil())
-
-					// Receive the first message
-					deviceList, err := stream.Recv()
-					Expect(err).To(BeNil())
-					Expect(deviceList).NotTo(BeNil())
-
-					// Check that we received devices including REMOVED ones
-					removedCount := 0
-					foundDevices := make(map[string]spyre.DEVICE_STATE)
-					for _, device := range deviceList.Devices {
-						foundDevices[device.DeviceID.PCIAddress] = device.DeviceState
-						if device.DeviceState == spyre.DEVICE_STATE_REMOVED {
-							removedCount++
-						}
-					}
-
-					// We should have at least 2 removed devices (0000:99:00.0 and 0000:88:00.0)
-					Expect(removedCount).To(BeNumerically(">=", 2))
-					Expect(foundDevices["0000:99:00.0"]).To(Equal(spyre.DEVICE_STATE_REMOVED))
-					Expect(foundDevices["0000:88:00.0"]).To(Equal(spyre.DEVICE_STATE_REMOVED))
-				})
-
-				It("should work with empty initial device list", func() {
-					// Create a client that uses the new RPC with empty initial devices
-					var opts []grpc.DialOption
-					opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-					conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
-					Expect(err).To(BeNil())
-					defer conn.Close()
-
-					client := spyre.NewSpyreHealthServiceClient(conn)
-
-					// Empty initial devices - should behave like the old RPC
-					initialDevices := &spyre.Devices{
-						Devices: []*spyre.Device{},
-					}
-
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
-
-					stream, err := client.RegisterForSpyreDevicesEventsWithDevices(ctx, initialDevices)
-					Expect(err).To(BeNil())
-
-					// Receive the first message
-					deviceList, err := stream.Recv()
-					Expect(err).To(BeNil())
-					Expect(deviceList).NotTo(BeNil())
-
-					// No devices should be marked as REMOVED
-					for _, device := range deviceList.Devices {
-						Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
-					}
-				})
-
-				It("should add new devices to tracking map", func() {
-					// Create a client that uses the new RPC with initial devices
-					var opts []grpc.DialOption
-					opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-					conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
-					Expect(err).To(BeNil())
-					defer conn.Close()
-
-					client := spyre.NewSpyreHealthServiceClient(conn)
-
-					// Define initial devices - only one device
-					initialDevices := &spyre.Devices{
-						Devices: []*spyre.Device{
-							{
-								DeviceID: &spyre.DeviceID{
-									PCIAddress: "0000:1a:00.0",
-								},
-								DeviceType:  spyre.DEVICE_TYPE_PF,
-								DeviceState: spyre.DEVICE_STATE_ONLINE,
-							},
-						},
-					}
-
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
-
-					stream, err := client.RegisterForSpyreDevicesEventsWithDevices(ctx, initialDevices)
-					Expect(err).To(BeNil())
-
-					// Receive the first message
-					deviceList, err := stream.Recv()
-					Expect(err).To(BeNil())
-					Expect(deviceList).NotTo(BeNil())
-
-					// Now send an update with a new device
-					TestHealthServer.UpdateHealths([]types.DeviceState{
-						{PciAddress: "0000:1a:00.0", State: spyre.DEVICE_STATE_ONLINE},
-						{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE}, // New device
-					})
-
-					// Receive the update
-					deviceList, err = stream.Recv()
-					Expect(err).To(BeNil())
-					Expect(deviceList).NotTo(BeNil())
-
-					// The new device should be present and not marked as REMOVED
-					foundNewDevice := false
-					for _, device := range deviceList.Devices {
-						if device.DeviceID.PCIAddress == "0000:2b:00.0" {
-							foundNewDevice = true
-							Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
-						}
-					}
-					Expect(foundNewDevice).To(BeTrue())
-
-					// Send another update without the original device
-					TestHealthServer.UpdateHealths([]types.DeviceState{
-						{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE},
-					})
-
-					// Receive the update
-					deviceList, err = stream.Recv()
-					Expect(err).To(BeNil())
-					Expect(deviceList).NotTo(BeNil())
-
-					// The original device should now be marked as REMOVED
-					foundRemovedDevice := false
-					for _, device := range deviceList.Devices {
-						if device.DeviceID.PCIAddress == "0000:1a:00.0" {
-							foundRemovedDevice = true
-							Expect(device.DeviceState).To(Equal(spyre.DEVICE_STATE_REMOVED))
-						}
-					}
-					Expect(foundRemovedDevice).To(BeTrue())
-
-					// The new device should still be present and not marked as REMOVED
-					foundNewDevice = false
-					for _, device := range deviceList.Devices {
-						if device.DeviceID.PCIAddress == "0000:2b:00.0" {
-							foundNewDevice = true
-							Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
-						}
-					}
-					Expect(foundNewDevice).To(BeTrue())
-				})
-			})
 		})
 
+		Describe("RegisterForSpyreDevicesEventsWithDevices", func() {
+			// Stop the global client before these tests to avoid multiple concurrent streams
+			BeforeEach(func() {
+				c.Stop()
+			})
+
+			// Recreate and restart the global client after these tests
+			AfterEach(func() {
+				c = NewClient()
+				c.Start()
+			})
+
+			It("should detect removed devices", func() {
+				// Create a client that uses the new RPC with initial devices
+				var opts []grpc.DialOption
+				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
+				Expect(err).To(BeNil())
+				defer conn.Close()
+
+				client := spyre.NewSpyreHealthServiceClient(conn)
+
+				// Define initial devices - include some that don't exist in current state
+				initialDevices := &spyre.Devices{
+					Devices: []*spyre.Device{
+						{
+							DeviceID: &spyre.DeviceID{
+								PCIAddress: "0000:1a:00.0",
+							},
+							DeviceType:  spyre.DEVICE_TYPE_PF,
+							DeviceState: spyre.DEVICE_STATE_ONLINE,
+						},
+						{
+							DeviceID: &spyre.DeviceID{
+								PCIAddress: "0000:99:00.0", // This device doesn't exist
+							},
+							DeviceType:  spyre.DEVICE_TYPE_PF,
+							DeviceState: spyre.DEVICE_STATE_ONLINE,
+						},
+						{
+							DeviceID: &spyre.DeviceID{
+								PCIAddress: "0000:88:00.0", // This device doesn't exist
+							},
+							DeviceType:  spyre.DEVICE_TYPE_VF,
+							DeviceState: spyre.DEVICE_STATE_ONLINE,
+						},
+					},
+				}
+
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+
+				stream, err := client.RegisterForSpyreDevicesEventsWithDevices(ctx, initialDevices)
+				Expect(err).To(BeNil())
+
+				// Receive the first message
+				deviceList, err := stream.Recv()
+				Expect(err).To(BeNil())
+				Expect(deviceList).NotTo(BeNil())
+
+				// Check that we received devices including REMOVED ones
+				removedCount := 0
+				foundDevices := make(map[string]spyre.DEVICE_STATE)
+				for _, device := range deviceList.Devices {
+					foundDevices[device.DeviceID.PCIAddress] = device.DeviceState
+					if device.DeviceState == spyre.DEVICE_STATE_REMOVED {
+						removedCount++
+					}
+				}
+
+				// We should have at least 2 removed devices (0000:99:00.0 and 0000:88:00.0)
+				Expect(removedCount).To(BeNumerically(">=", 2))
+				Expect(foundDevices["0000:99:00.0"]).To(Equal(spyre.DEVICE_STATE_REMOVED))
+				Expect(foundDevices["0000:88:00.0"]).To(Equal(spyre.DEVICE_STATE_REMOVED))
+			})
+
+			It("should work with empty initial device list", func() {
+				// Create a client that uses the new RPC with empty initial devices
+				var opts []grpc.DialOption
+				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
+				Expect(err).To(BeNil())
+				defer conn.Close()
+
+				client := spyre.NewSpyreHealthServiceClient(conn)
+
+				// Empty initial devices - should behave like the old RPC
+				initialDevices := &spyre.Devices{
+					Devices: []*spyre.Device{},
+				}
+
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+
+				stream, err := client.RegisterForSpyreDevicesEventsWithDevices(ctx, initialDevices)
+				Expect(err).To(BeNil())
+
+				// Receive the first message
+				deviceList, err := stream.Recv()
+				Expect(err).To(BeNil())
+				Expect(deviceList).NotTo(BeNil())
+
+				// No devices should be marked as REMOVED
+				for _, device := range deviceList.Devices {
+					Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
+				}
+			})
+
+			It("should add new devices to tracking map", func() {
+				// Create a client that uses the new RPC with initial devices
+				var opts []grpc.DialOption
+				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
+				Expect(err).To(BeNil())
+				defer conn.Close()
+
+				client := spyre.NewSpyreHealthServiceClient(conn)
+
+				// Define initial devices - only one device
+				initialDevices := &spyre.Devices{
+					Devices: []*spyre.Device{
+						{
+							DeviceID: &spyre.DeviceID{
+								PCIAddress: "0000:1a:00.0",
+							},
+							DeviceType:  spyre.DEVICE_TYPE_PF,
+							DeviceState: spyre.DEVICE_STATE_ONLINE,
+						},
+					},
+				}
+
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+
+				stream, err := client.RegisterForSpyreDevicesEventsWithDevices(ctx, initialDevices)
+				Expect(err).To(BeNil())
+
+				// Receive the first message
+				deviceList, err := stream.Recv()
+				Expect(err).To(BeNil())
+				Expect(deviceList).NotTo(BeNil())
+
+				// Now send an update with a new device
+				TestHealthServer.UpdateHealths([]types.DeviceState{
+					{PciAddress: "0000:1a:00.0", State: spyre.DEVICE_STATE_ONLINE},
+					{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE}, // New device
+				})
+
+				// Receive the update
+				deviceList, err = stream.Recv()
+				Expect(err).To(BeNil())
+				Expect(deviceList).NotTo(BeNil())
+
+				// The new device should be present and not marked as REMOVED
+				foundNewDevice := false
+				for _, device := range deviceList.Devices {
+					if device.DeviceID.PCIAddress == "0000:2b:00.0" {
+						foundNewDevice = true
+						Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
+					}
+				}
+				Expect(foundNewDevice).To(BeTrue())
+
+				// Send another update without the original device
+				TestHealthServer.UpdateHealths([]types.DeviceState{
+					{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE},
+				})
+
+				// Receive the update
+				deviceList, err = stream.Recv()
+				Expect(err).To(BeNil())
+				Expect(deviceList).NotTo(BeNil())
+
+				// The original device should now be marked as REMOVED
+				foundRemovedDevice := false
+				for _, device := range deviceList.Devices {
+					if device.DeviceID.PCIAddress == "0000:1a:00.0" {
+						foundRemovedDevice = true
+						Expect(device.DeviceState).To(Equal(spyre.DEVICE_STATE_REMOVED))
+					}
+				}
+				Expect(foundRemovedDevice).To(BeTrue())
+
+				// The new device should still be present and not marked as REMOVED
+				foundNewDevice = false
+				for _, device := range deviceList.Devices {
+					if device.DeviceID.PCIAddress == "0000:2b:00.0" {
+						foundNewDevice = true
+						Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
+					}
+				}
+				Expect(foundNewDevice).To(BeTrue())
+			})
+		})
 	})
 
 })

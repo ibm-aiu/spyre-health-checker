@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
@@ -43,12 +45,13 @@ func getLogger() *zap.SugaredLogger {
 type healthServer struct {
 	mu sync.RWMutex
 	pb.UnimplementedSpyreHealthServiceServer
-	updateQueue chan []types.DeviceState
-	socket      string
-	vitals      *healthcheck.Vitals
-	streaming   atomic.Bool
-	httpServer  *http.Server
-	ready       atomic.Bool
+	updateQueue       chan []types.DeviceState
+	socket            string
+	vitals            *healthcheck.Vitals
+	streaming         atomic.Bool
+	healthHTTPServer  *http.Server
+	metricsHTTPServer *http.Server
+	ready             atomic.Bool
 }
 
 func NewServer(v *healthcheck.Vitals) *healthServer {
@@ -95,8 +98,8 @@ func (s *healthServer) StartGRPCServer(socket string) error {
 	return nil
 }
 
-// StartHTTPServer starts the HTTP server for health check endpoints
-func (s *healthServer) StartHTTPServer(port int) error {
+// StartHealthHTTPServer starts the HTTP server for server health check endpoints
+func (s *healthServer) StartHealthHTTPServer(port int) error {
 	mux := http.NewServeMux()
 
 	// Liveness probe - always returns 200 if server is running
@@ -122,14 +125,35 @@ func (s *healthServer) StartHTTPServer(port int) error {
 		}
 	})
 
-	s.httpServer = &http.Server{
+	s.healthHTTPServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: mux,
 	}
 
 	go func() {
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			getLogger().Errorf("HTTP server error: %v", err)
+		if err := s.healthHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			getLogger().Errorf("health HTTP server error: %v", err)
+		}
+	}()
+
+	return nil
+}
+
+// StartMetricsHTTPServer starts the HTTP server for Prometheus compatible metrics
+func (s *healthServer) StartMetricsHTTPServer(port int) error {
+	mux := http.NewServeMux()
+
+	// Prometheus metrics
+	mux.Handle("/metrics", promhttp.Handler())
+
+	s.metricsHTTPServer = &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
+	}
+
+	go func() {
+		if err := s.metricsHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			getLogger().Errorf("metrics HTTP server error: %v", err)
 		}
 	}()
 
@@ -276,12 +300,21 @@ func (s *healthServer) Stop() {
 	s.ready.Store(false)
 	close(s.updateQueue)
 
-	// Shutdown HTTP server gracefully
-	if s.httpServer != nil {
+	// Shutdown health HTTP server gracefully
+	if s.healthHTTPServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := s.httpServer.Shutdown(ctx); err != nil {
-			getLogger().Errorf("HTTP server shutdown error: %v", err)
+		if err := s.healthHTTPServer.Shutdown(ctx); err != nil {
+			getLogger().Errorf("Health HTTP server shutdown error: %v", err)
+		}
+	}
+
+	// Shutdown metrics HTTP server gracefully
+	if s.metricsHTTPServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.metricsHTTPServer.Shutdown(ctx); err != nil {
+			getLogger().Errorf("Metrics HTTP server shutdown error: %v", err)
 		}
 	}
 
