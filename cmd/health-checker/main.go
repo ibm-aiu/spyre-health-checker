@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	socket   = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
-	timer    = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
-	httpPort = flag.Int("http-port", 8080, "HTTP port for health check endpoints of server")
+	socket      = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
+	timer       = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
+	healthPort  = flag.Int("health-port", 8080, "HTTP port for server health check endpoints")
+	metricsPort = flag.Int("metrics-port", 8081, "HTTP port for Prometheus compatible card metrics")
 )
 
 func main() {
@@ -36,8 +37,13 @@ func main() {
 		logger.Fatal(err)
 	}
 
-	logger.Infof("Starting HTTP health check server on port %d", *httpPort)
-	if err := s.StartHTTPServer(*httpPort); err != nil {
+	logger.Infof("Starting HTTP server for server health on port %d", *healthPort)
+	if err := s.StartHealthHTTPServer(*healthPort); err != nil {
+		logger.Fatal(err)
+	}
+
+	logger.Infof("Starting HTTP for Prometheus compatible card metrics on port %d", *metricsPort)
+	if err := s.StartMetricsHTTPServer(*metricsPort); err != nil {
 		logger.Fatal(err)
 	}
 
@@ -52,8 +58,14 @@ func main() {
 	}
 	defer s.Stop()
 
-	reg := prometheus.NewRegistry()
-	utils.InitMetrics(reg)
+	utils.InitMetrics(prometheus.DefaultRegisterer)
+
+	if err := vitals.UpdateStates(); err != nil {
+		logger.Warnf("Error calling initial UpdateState(): %v", err)
+	} else {
+		utils.UpdateDeviceMetrics(vitals.GetVitalStates())
+		s.UpdateHealths(vitals.GetVitalStates())
+	}
 
 	periodicChecksTicker := time.NewTicker(timer)
 	defer periodicChecksTicker.Stop()
@@ -63,6 +75,6 @@ func main() {
 			logger.Warnf("Error calling UpdateState(): %v", err)
 		}
 		s.UpdateHealths(vitals.GetVitalStates())
-		// todo: update prometheus registry data here with status information from vitals structure
+		utils.UpdateDeviceMetrics(vitals.GetVitalStates())
 	}
 }

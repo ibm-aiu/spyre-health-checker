@@ -4,7 +4,7 @@ FILENAME=$1
 TITLE=$2
 OUTPUT=./docs/${FILENAME}.md
 
-echo "# ${TITLE} " >${OUTPUT}
+echo "# ${TITLE}" >${OUTPUT}
 echo "Test item | Case description | File location" >>${OUTPUT}
 echo "---|---|---" >>${OUTPUT}
 CSV=$(mktemp)

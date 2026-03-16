@@ -54,8 +54,11 @@ COPY --from=builder /build/spyre-health-checker /usr/bin/spyre-health-checker
 COPY --from=builder /tmp/ubi-micro/ /
 COPY ./LICENSE /licenses/LICENSE
 
-# Expose HTTP health check port of server
+# Expose server HTTP health check port
 EXPOSE 8080
+
+# Expose metrics HTTP port
+EXPOSE 8081
 
 ENTRYPOINT [ "/usr/bin/spyre-health-checker" ]
 HEALTHCHECK NONE
