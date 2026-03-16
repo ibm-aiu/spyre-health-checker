@@ -25,6 +25,7 @@ var (
 	timer       = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
 	healthPort  = flag.Int("health-port", 8080, "HTTP port for server health check endpoints")
 	metricsPort = flag.Int("metrics-port", 8081, "HTTP port for Prometheus compatible card metrics")
+	insecurePtr = flag.Bool("insecure", true, "Enable insecure mode (skip TLS verification)")
 	tlsCert     = flag.String("tls-cert", getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"), "Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)")
 	tlsKey      = flag.String("tls-key", getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"), "Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)")
 )
@@ -40,15 +41,16 @@ func main() {
 	vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
 
 	s := server.NewServer(&vitals)
-
-	logger.Infof("Starting insecure gRPC server")
-	if err := s.StartInsecureGRPCServer(*socket); err != nil {
-		logger.Fatal(err)
-	}
-
-	logger.Infof("Starting secure gRPC server with mTLS")
-	if err := s.StartSecureGRPCServer(*secureSocket, *tlsCert, *tlsKey); err != nil {
-		logger.Fatal(err)
+	if *insecurePtr {
+		logger.Infof("Starting insecure gRPC server")
+		if err := s.StartInsecureGRPCServer(*socket); err != nil {
+			logger.Fatalf("Error starting insecure gRPC Server: %v", err)
+		}
+	} else {
+		logger.Infof("Starting secure gRPC server with mTLS")
+		if err := s.StartSecureGRPCServer(*socket, *tlsCert, *tlsKey); err != nil {
+			logger.Fatalf("Error starting secure gRPC Server: %v", err)
+		}
 	}
 
 	logger.Infof("Starting HTTP server for server health on port %d", *healthPort)

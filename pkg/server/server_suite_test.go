@@ -36,11 +36,10 @@ import (
 )
 
 var (
-	TestSocket       = "checker.sock"
-	TestSecureSocket = "checker-secure.sock"
-	TestCertDir      = "test-certs"
-	TestCert         = ""
-	TestKey          = ""
+	TestSocket  = "checker.sock"
+	TestCertDir = "test-certs"
+	TestCert    = ""
+	TestKey     = ""
 
 	TestHealthServer *healthServer
 )
@@ -68,7 +67,7 @@ func NewClient() *Client {
 	creds := credentials.NewTLS(tlsConfig)
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
-	conn, err := grpc.NewClient("unix:"+TestSecureSocket, opts...)
+	conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 	Expect(err).To(BeNil())
 	client := pb.NewSpyreHealthServiceClient(conn)
 	return &Client{
@@ -152,7 +151,7 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	err := os.RemoveAll(TestSecureSocket)
+	err := os.RemoveAll(TestSocket)
 	Expect(err).To(BeNil())
 	err = os.RemoveAll(TestCertDir)
 	Expect(err).To(BeNil())
@@ -237,7 +236,7 @@ func startServer() *healthServer {
 	s := NewServer(&vitals)
 
 	// Start secure server with mTLS
-	err := s.StartSecureGRPCServer(TestSecureSocket, TestCert, TestKey)
+	err := s.StartSecureGRPCServer(TestSocket, TestCert, TestKey)
 	Expect(err).To(BeNil())
 
 	return s

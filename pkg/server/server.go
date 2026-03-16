@@ -117,6 +117,14 @@ func (s *healthServer) StartSecureGRPCServer(socket string, tlsCertPath string, 
 		log.Errorf("failed to remove present %s: %v", socket, err)
 	}
 
+	cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
+	if err != nil {
+		if log == nil {
+			log = getLogger()
+		}
+		return fmt.Errorf("failed to load TLS credentials: %w", err) // pragma: allowlist secret
+	}
+
 	lis, err := net.Listen("unix", socket)
 	if err != nil {
 		if log == nil {
@@ -127,15 +135,6 @@ func (s *healthServer) StartSecureGRPCServer(socket string, tlsCertPath string, 
 	}
 
 	var opts []grpc.ServerOption
-
-	cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
-	if err != nil {
-		if log == nil {
-			log = getLogger()
-		}
-		return fmt.Errorf("failed to load TLS credentials: %w", err) // pragma: allowlist secret
-	}
-
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
