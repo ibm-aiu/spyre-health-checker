@@ -12,6 +12,7 @@ readonly YQ=${REPO_ROOT_DIR}/bin/yq
 
 BRANCH_TYPE=""
 CURRENT_VERSION=""
+DRY_RUN=""
 declare -i RC_NUMBER=0
 
 function usage() {
@@ -44,7 +45,7 @@ function get_current_version() {
 }
 
 function is_git_tree_clean() {
-	if [[ "xTRUE" == "x${DRY_RUN:-}" ]]; then
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
 		return
 	fi
 	local output=$(${GIT} status --porcelain)
@@ -56,7 +57,7 @@ function is_git_tree_clean() {
 }
 
 function is_current_branch_main() {
-	if [[ "xTRUE" == "x${DRY_RUN:-}" ]]; then
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
 		return
 	fi
 	local branch_name=${GIT_BRANCH_NAME:-}
@@ -74,7 +75,7 @@ function is_current_branch_main() {
 }
 
 function is_current_branch_release() {
-	if [[ "xTRUE" == "x${DRY_RUN:-}" ]]; then
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
 		return
 	fi
 	local branch_name=${GIT_BRANCH_NAME:-}
@@ -118,7 +119,7 @@ function make_branch() {
 
 	is_git_tree_clean # This ensures that we added all items to the commit.
 
-	if [[ "xTRUE" == "x${DRY_RUN:-}" ]]; then
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
 		return
 	fi
 	${GIT} push --set-upstream origin ${branch_name}

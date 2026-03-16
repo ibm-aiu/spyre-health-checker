@@ -141,7 +141,7 @@ reset_configs() {
 # Caller sets VERSION file and GIT_BRANCH_NAME before calling.
 #
 # Exit-code note: the last statement in make_branch is:
-#   [[ "xTRUE" == "x${DRY_RUN:-}" ]] && git push ...
+#   [[ "xTRUE" == "x${DRY_RUN}" ]] && git push ...
 # When DRY_RUN=TRUE the condition is false, so the script exits 1.
 # Exit codes 0 and 1 are therefore both acceptable; anything higher
 # indicates a genuine error.
