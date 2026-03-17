@@ -12,6 +12,7 @@ readonly YQ=${REPO_ROOT_DIR}/bin/yq
 
 BRANCH_TYPE=""
 CURRENT_VERSION=""
+DRY_RUN=""
 declare -i RC_NUMBER=0
 
 function usage() {
