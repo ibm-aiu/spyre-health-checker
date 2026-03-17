@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -13,7 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
@@ -256,7 +257,20 @@ var _ = Describe("Server", Ordered, func() {
 			It("should detect removed devices", func() {
 				// Create a client that uses the new RPC with initial devices
 				var opts []grpc.DialOption
-				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+				// Use TLS credentials with test certificates
+				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
+				Expect(err).To(BeNil())
+
+				tlsConfig := &tls.Config{
+					Certificates:       []tls.Certificate{cert},
+					InsecureSkipVerify: true,
+					MinVersion:         tls.VersionTLS12,
+				}
+
+				creds := credentials.NewTLS(tlsConfig)
+				opts = append(opts, grpc.WithTransportCredentials(creds))
+
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
 				defer conn.Close()
@@ -320,7 +334,20 @@ var _ = Describe("Server", Ordered, func() {
 			It("should work with empty initial device list", func() {
 				// Create a client that uses the new RPC with empty initial devices
 				var opts []grpc.DialOption
-				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+				// Use TLS credentials with test certificates
+				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
+				Expect(err).To(BeNil())
+
+				tlsConfig := &tls.Config{
+					Certificates:       []tls.Certificate{cert},
+					InsecureSkipVerify: true,
+					MinVersion:         tls.VersionTLS12,
+				}
+
+				creds := credentials.NewTLS(tlsConfig)
+				opts = append(opts, grpc.WithTransportCredentials(creds))
+
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
 				defer conn.Close()
@@ -352,7 +379,20 @@ var _ = Describe("Server", Ordered, func() {
 			It("should add new devices to tracking map", func() {
 				// Create a client that uses the new RPC with initial devices
 				var opts []grpc.DialOption
-				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+				// Use TLS credentials with test certificates
+				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
+				Expect(err).To(BeNil())
+
+				tlsConfig := &tls.Config{
+					Certificates:       []tls.Certificate{cert},
+					InsecureSkipVerify: true,
+					MinVersion:         tls.VersionTLS12,
+				}
+
+				creds := credentials.NewTLS(tlsConfig)
+				opts = append(opts, grpc.WithTransportCredentials(creds))
+
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
 				defer conn.Close()
