@@ -9,8 +9,8 @@
 # Copies the files the script modifies into a temp directory and
 # runs the script in dry-run mode (-d) with fake git, make, and yq
 # binaries so that no real repo mutations occur.
-# The tests assert the VERSION file modifications
-# for each supported branch type.
+# The tests assert the VERSION file and for patch-release .e2e-test-branch
+# modifications for each supported branch type.
 #
 set -eu -o pipefail
 
@@ -134,6 +134,7 @@ reset_configs() {
 	if [ -f "${ORIG_VERSION}" ]; then
 		cp "${ORIG_VERSION}" "${TMPDIR}/VERSION"
 	fi
+	rm -f "${TMPDIR}/.e2e-test-branch"
 }
 
 # Run the script from TMPDIR in dry-run mode so git push is skipped.
@@ -164,6 +165,7 @@ run_script() {
 #
 #   patch-release  → branch: patch_to_v<version>
 #                    VERSION file incremented (patch)
+#                    .e2e-test-branch created with branch name
 #
 #   rc             → branch: v<version>-rc.<n>
 #                    VERSION file incremented (rc)
@@ -226,6 +228,11 @@ unset GIT_BRANCH_NAME
 assert_eq "patch-release: VERSION incremented" \
 	"1.2.4" \
 	"$(cat "${TMPDIR}/VERSION")"
+assert_file_exists "patch-release: .e2e-test-branch created" \
+	"${TMPDIR}/.e2e-test-branch"
+assert_eq "patch-release: .e2e-test-branch content" \
+	"patch_to_v1.2.4" \
+	"$(cat "${TMPDIR}/.e2e-test-branch")"
 
 # ── Scenario 4: rc ────────────────────────────────────────────────────────────
 # increment-version.bash --rc 1 on 1.2.3-rc.1 (RC_NUMBER=1) → ((++RC_NUMBER))=2 → 1.2.3-rc.2

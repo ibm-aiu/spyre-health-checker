@@ -81,7 +81,7 @@ function verify_only_version_file_modified() {
 	local output=$(${GIT} status --porcelain)
 
 	if [[ ${output} != " M  VERSION" ]]; then
-		echo "Error: Expected Only the VERSION file to be modified."
+		echo "Error: Expected only the VERSION file to be modified."
 		echo "git status:"
 		echo "${output}"
 		exit 1
@@ -122,6 +122,11 @@ function make_branch() {
 		exit 1
 	fi
 	${GIT} checkout -b ${branch_name}
+
+	if [[ "patch-release" == ${release_type} ]]; then
+		echo ${branch_name} >${REPO_ROOT_DIR}/.e2e-test-branch
+		${GIT} add ${REPO_ROOT_DIR}/.e2e-test-branch
+	fi
 
 	if [[ "minor-release" != ${release_type} ]] && [[ "major-release" != ${release_type} ]]; then
 		${GIT} add ${REPO_ROOT_DIR}/VERSION
@@ -178,6 +183,9 @@ if [[ ${#POSITIONAL_ARGS[*]} -gt 0 ]]; then
 fi
 
 validate_environment
+
+# This check is needed because the VERSION file updated
+# before running a version-upgrade.
 
 if [[ ${RELEASE_TYPE} == "version-upgrade" ]]; then
 	verify_only_version_file_modified
