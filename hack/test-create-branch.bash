@@ -9,8 +9,8 @@
 # Copies the files the script modifies into a temp directory and
 # runs the script in dry-run mode (-d) with fake git, make, and yq
 # binaries so that no real repo mutations occur.
-# The tests assert the VERSION and .e2e-test-branch file modifications
-# for each supported branch type.
+# The tests assert the VERSION file and for patch-release .e2e-test-branch
+# modifications for each supported branch type.
 #
 set -eu -o pipefail
 
@@ -160,7 +160,6 @@ run_script() {
 #
 #   minor-release  → branch: release_v<version>
 #                    VERSION file unchanged
-#                    .e2e-test-branch created with branch name
 #
 #   major-release  → same as minor-release
 #
@@ -170,11 +169,9 @@ run_script() {
 #
 #   rc             → branch: v<version>-rc.<n>
 #                    VERSION file incremented (rc)
-#                    .e2e-test-branch created with branch name
 #
 #   version-upgrade → branch: update_to_v<version>
 #                     VERSION file unchanged
-#                     .e2e-test-branch created with branch name
 #
 
 echo ""
@@ -198,11 +195,6 @@ unset GIT_BRANCH_NAME
 assert_eq "minor-release: VERSION unchanged" \
 	"1.2.3" \
 	"$(cat "${TMPDIR}/VERSION")"
-assert_file_exists "minor-release: .e2e-test-branch created" \
-	"${TMPDIR}/.e2e-test-branch"
-assert_eq "minor-release: .e2e-test-branch content" \
-	"release_v1.2.3" \
-	"$(cat "${TMPDIR}/.e2e-test-branch")"
 
 # ── Scenario 2: major-release ─────────────────────────────────────────────────
 # Same behaviour as minor-release
@@ -219,11 +211,6 @@ unset GIT_BRANCH_NAME
 assert_eq "major-release: VERSION unchanged" \
 	"2.0.0" \
 	"$(cat "${TMPDIR}/VERSION")"
-assert_file_exists "major-release: .e2e-test-branch created" \
-	"${TMPDIR}/.e2e-test-branch"
-assert_eq "major-release: .e2e-test-branch content" \
-	"release_v2.0.0" \
-	"$(cat "${TMPDIR}/.e2e-test-branch")"
 
 # ── Scenario 3: patch-release ─────────────────────────────────────────────────
 # increment-version.bash --patch on 1.2.3 → 1.2.4
@@ -263,11 +250,6 @@ unset GIT_BRANCH_NAME
 assert_eq "rc: VERSION incremented" \
 	"1.2.3-rc.2" \
 	"$(cat "${TMPDIR}/VERSION")"
-assert_file_exists "rc: .e2e-test-branch created" \
-	"${TMPDIR}/.e2e-test-branch"
-assert_eq "rc: .e2e-test-branch content" \
-	"v1.2.3-rc.2" \
-	"$(cat "${TMPDIR}/.e2e-test-branch")"
 
 # ── Scenario 5: version-upgrade ───────────────────────────────────────────────
 # VERSION=1.2.4 → branch update_to_v1.2.4
@@ -285,11 +267,6 @@ unset GIT_BRANCH_NAME
 assert_eq "version-upgrade: VERSION unchanged" \
 	"1.2.4" \
 	"$(cat "${TMPDIR}/VERSION")"
-assert_file_exists "version-upgrade: .e2e-test-branch created" \
-	"${TMPDIR}/.e2e-test-branch"
-assert_eq "version-upgrade: .e2e-test-branch content" \
-	"update_to_v1.2.4" \
-	"$(cat "${TMPDIR}/.e2e-test-branch")"
 
 # ── summary ───────────────────────────────────────────────────────────────────
 

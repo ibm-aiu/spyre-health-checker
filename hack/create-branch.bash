@@ -18,7 +18,7 @@ declare -i RC_NUMBER=0
 function usage() {
 	echo "Usage: ${0} flags"
 	echo "Flags:"
-	echo "  -t, --type version-upgrade|minor-release|major-release|patch-release|rc <old release candidate number>  creates a release branch"
+	echo "  -t, --type version-upgrade|minor-release|major-release|patch-release|rc <old release candidate number> creates a release branch"
 	echo "  -d, --dry-run run the script, do not push the branch"
 	echo "  -h, --help prints this message"
 	exit 2
@@ -74,6 +74,20 @@ function is_current_branch_main() {
 	fi
 }
 
+function verify_only_version_file_modified() {
+	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
+		return
+	fi
+	local output=$(${GIT} status --porcelain)
+
+	if [[ ${output} != " M  VERSION" ]]; then
+		echo "Error: Expected only the VERSION file to be modified."
+		echo "git status:"
+		echo "${output}"
+		exit 1
+	fi
+}
+
 function is_current_branch_release() {
 	if [[ "xTRUE" == "x${DRY_RUN}" ]]; then
 		return
@@ -109,13 +123,16 @@ function make_branch() {
 	fi
 	${GIT} checkout -b ${branch_name}
 
-	echo ${branch_name} >${REPO_ROOT_DIR}/.e2e-test-branch
+	if [[ "patch-release" == ${release_type} ]]; then
+		echo ${branch_name} >${REPO_ROOT_DIR}/.e2e-test-branch
+		${GIT} add ${REPO_ROOT_DIR}/.e2e-test-branch
+	fi
+
 	if [[ "minor-release" != ${release_type} ]] && [[ "major-release" != ${release_type} ]]; then
 		${GIT} add ${REPO_ROOT_DIR}/VERSION
 	fi
 
-	${GIT} add ${REPO_ROOT_DIR}/.e2e-test-branch
-	${GIT} commit -m "feat: creates release branch ${branch_name}" -m "Creates branch for release v${CURRENT_VERSION}" --no-verify
+	${GIT} commit -m "feat: create release branch ${branch_name}" -m "Create branch for release v${CURRENT_VERSION}" --no-verify
 
 	is_git_tree_clean # This ensures that we added all items to the commit.
 
@@ -166,7 +183,15 @@ if [[ ${#POSITIONAL_ARGS[*]} -gt 0 ]]; then
 fi
 
 validate_environment
-is_git_tree_clean
+
+# This check is needed because the VERSION file updated
+# before running a version-upgrade.
+
+if [[ ${RELEASE_TYPE} == "version-upgrade" ]]; then
+	verify_only_version_file_modified
+else
+	is_git_tree_clean
+fi
 
 case ${RELEASE_TYPE} in
 minor-release)
