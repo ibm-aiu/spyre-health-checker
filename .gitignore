@@ -27,6 +27,7 @@ go.work.sum
 
 # tools
 bin
+venv
 
 # Generated files
 unittest-report.json

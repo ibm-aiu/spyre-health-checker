@@ -1,5 +1,7 @@
-# Copyright (c) 2022 IBM Corp. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# +-------------------------------------------------------------------+
+# | (C) Copyright IBM Corp. 2022-2026                                 |
+# | SPDX-License-Identifier: Apache-2.0                               |
+# +-------------------------------------------------------------------+
 
 ARG BASE_UBI_IMAGE_TAG=9.6
 ARG BUILDER_IMAGE
