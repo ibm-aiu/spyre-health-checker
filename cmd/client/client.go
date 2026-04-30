@@ -26,9 +26,21 @@ func getEnvOrDefault(key, defaultValue string) string {
 
 var (
 	socket  = flag.String("socket", "checker.sock", "The unix socket for health checker")
-	tlsCert = flag.String("tls-cert", getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"), "Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)")
-	tlsKey  = flag.String("tls-key", getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"), "Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)")
-	tlsCA   = flag.String("tls-ca", getEnvOrDefault("SPYRE_TLS_CA", "/etc/spyre-health-checker/certs/ca.crt"), "Path to TLS CA certificate file for server verification (can be set via SPYRE_TLS_CA env var)")
+	tlsCert = flag.String(
+		"tls-cert",
+		getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"),
+		"Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)",
+	)
+	tlsKey = flag.String(
+		"tls-key",
+		getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"),
+		"Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)",
+	)
+	tlsCA = flag.String(
+		"tls-ca",
+		getEnvOrDefault("SPYRE_TLS_CA", "/etc/spyre-health-checker/certs/ca.crt"),
+		"Path to TLS CA certificate file for server verification (can be set via SPYRE_TLS_CA env var)",
+	)
 )
 
 func main() {
@@ -46,7 +58,7 @@ func main() {
 
 	logger.Infof("using socket %s", *socket)
 
-	var opts []grpc.DialOption
+	opts := make([]grpc.DialOption, 0, 1)
 
 	cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
 	if err != nil {

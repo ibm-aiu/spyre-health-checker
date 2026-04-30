@@ -97,12 +97,12 @@ var _ = Describe("Prometheus metrics", func() {
 		BeforeEach(func() {
 			InitMetrics(testRegistry)
 			// Set a test node name
-			os.Setenv("NODE_NAME", "test-node")
+			Expect(os.Setenv("NODE_NAME", "test-node")).To(Succeed())
 			NodeName = "test-node"
 		})
 
 		AfterEach(func() {
-			os.Unsetenv("NODE_NAME")
+			Expect(os.Unsetenv("NODE_NAME")).To(Succeed())
 			NodeName = ""
 		})
 

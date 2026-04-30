@@ -18,8 +18,7 @@ import (
 
 	healthcheck "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/healthcheck"
 	utils "github.ibm.com/ai-chip-toolchain/spyre-health-checker/internal/utils"
-	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
-	pb "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
+	spyre "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/health/spyre"
 	. "github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/server"
 	"github.ibm.com/ai-chip-toolchain/spyre-health-checker/pkg/types"
 )
@@ -46,10 +45,10 @@ var _ = Describe("Server", Ordered, func() {
 					pciAddr := health.PciAddress
 					pfAddress := getPseudoPfAddress(pciAddr) // convert to .0
 					if slices.Contains(utils.BadCards, pfAddress) {
-						Expect(health.State).To(BeEquivalentTo(pb.DEVICE_STATE_IN_ERROR))
+						Expect(health.State).To(BeEquivalentTo(spyre.DEVICE_STATE_IN_ERROR))
 					} else {
 						Expect(slices.Contains(utils.GoodCards, pfAddress))
-						Expect(health.State).To(BeEquivalentTo(pb.DEVICE_STATE_ONLINE))
+						Expect(health.State).To(BeEquivalentTo(spyre.DEVICE_STATE_ONLINE))
 					}
 				}
 			}).WithTimeout(10 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
@@ -75,11 +74,11 @@ var _ = Describe("Server", Ordered, func() {
 				for _, health := range healths {
 					pciAddr := health.PciAddress
 					if slices.Contains(badCards, pciAddr) {
-						Expect(health.State).To(BeEquivalentTo(pb.DEVICE_STATE_IN_ERROR))
+						Expect(health.State).To(BeEquivalentTo(spyre.DEVICE_STATE_IN_ERROR))
 					} else {
 
 						Expect(slices.Contains(goodCards, pciAddr))
-						Expect(health.State).To(BeEquivalentTo(pb.DEVICE_STATE_ONLINE))
+						Expect(health.State).To(BeEquivalentTo(spyre.DEVICE_STATE_ONLINE))
 					}
 				}
 			}).WithTimeout(10 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
@@ -194,7 +193,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", healthHttpPort))
 				Expect(err).NotTo(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			})
@@ -203,7 +202,7 @@ var _ = Describe("Server", Ordered, func() {
 				// Server should already be ready from previous tests
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/readyz", healthHttpPort))
 				Expect(err).NotTo(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			})
@@ -217,7 +216,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", metricsPort))
 				Expect(err).NotTo(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			})
@@ -229,7 +228,7 @@ var _ = Describe("Server", Ordered, func() {
 					go func() {
 						resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", healthHttpPort))
 						Expect(err).NotTo(HaveOccurred())
-						defer resp.Body.Close()
+						defer func() { _ = resp.Body.Close() }()
 						Expect(resp.StatusCode).To(Equal(http.StatusOK))
 						done <- true
 					}()
@@ -256,7 +255,7 @@ var _ = Describe("Server", Ordered, func() {
 
 			It("should detect removed devices", func() {
 				// Create a client that uses the new RPC with initial devices
-				var opts []grpc.DialOption
+				opts := make([]grpc.DialOption, 0, 1)
 
 				// Use TLS credentials with test certificates
 				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
@@ -273,7 +272,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
 				client := spyre.NewSpyreHealthServiceClient(conn)
 
@@ -333,7 +332,7 @@ var _ = Describe("Server", Ordered, func() {
 
 			It("should work with empty initial device list", func() {
 				// Create a client that uses the new RPC with empty initial devices
-				var opts []grpc.DialOption
+				opts := make([]grpc.DialOption, 0, 1)
 
 				// Use TLS credentials with test certificates
 				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
@@ -350,7 +349,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
 				client := spyre.NewSpyreHealthServiceClient(conn)
 
@@ -378,7 +377,7 @@ var _ = Describe("Server", Ordered, func() {
 
 			It("should add new devices to tracking map", func() {
 				// Create a client that uses the new RPC with initial devices
-				var opts []grpc.DialOption
+				opts := make([]grpc.DialOption, 0, 1)
 
 				// Use TLS credentials with test certificates
 				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
@@ -395,7 +394,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
 				client := spyre.NewSpyreHealthServiceClient(conn)
 

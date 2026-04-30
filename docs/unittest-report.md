@@ -5,6 +5,15 @@ HealthChecker functions|GetVitalStates() returns v.States object|/internal/healt
 HealthChecker functions|UpdateStates() does not error with simple test scenario|/internal/healthcheck/healthcheck_test.go
 HealthChecker functions|UpdateStates() is actually callable at Runtime|/internal/healthcheck/healthcheck_test.go
 Parser|parseLSPCI() identifies supported cards, online/error state, and device type|/internal/healthcheck/parser_test.go
+Prometheus metrics/InitMetrics|should handle double registration gracefully|/internal/utils/prometheus_test.go
+Prometheus metrics/InitMetrics|should register Go and Process collectors|/internal/utils/prometheus_test.go
+Prometheus metrics/InitMetrics|should register SpyreDeviceState metric successfully|/internal/utils/prometheus_test.go
+Prometheus metrics/UpdateDeviceMetrics|should handle all device states correctly|/internal/utils/prometheus_test.go
+Prometheus metrics/UpdateDeviceMetrics|should handle all device types correctly|/internal/utils/prometheus_test.go
+Prometheus metrics/UpdateDeviceMetrics|should handle empty device list|/internal/utils/prometheus_test.go
+Prometheus metrics/UpdateDeviceMetrics|should reset previous metrics when updating|/internal/utils/prometheus_test.go
+Prometheus metrics/UpdateDeviceMetrics|should update metrics for a single device|/internal/utils/prometheus_test.go
+Prometheus metrics/UpdateDeviceMetrics|should update metrics for multiple devices|/internal/utils/prometheus_test.go
 Prometheus metrics/enumDeviceState|should return 'BOOTING' for DEVICE_STATE_BOOTING|/internal/utils/prometheus_test.go
 Prometheus metrics/enumDeviceState|should return 'IN_ERROR' for DEVICE_STATE_IN_ERROR|/internal/utils/prometheus_test.go
 Prometheus metrics/enumDeviceState|should return 'OFFLINE' for DEVICE_STATE_OFFLINE|/internal/utils/prometheus_test.go
@@ -18,15 +27,6 @@ Prometheus metrics/enumDeviceType|should return 'PF' for DEVICE_TYPE_PF|/interna
 Prometheus metrics/enumDeviceType|should return 'UNSPECIFIED' for DEVICE_TYPE_UNSPECIFIED|/internal/utils/prometheus_test.go
 Prometheus metrics/enumDeviceType|should return 'UNSPECIFIED' for unknown device type|/internal/utils/prometheus_test.go
 Prometheus metrics/enumDeviceType|should return 'VF' for DEVICE_TYPE_VF|/internal/utils/prometheus_test.go
-Prometheus metrics/InitMetrics|should handle double registration gracefully|/internal/utils/prometheus_test.go
-Prometheus metrics/InitMetrics|should register Go and Process collectors|/internal/utils/prometheus_test.go
-Prometheus metrics/InitMetrics|should register SpyreDeviceState metric successfully|/internal/utils/prometheus_test.go
-Prometheus metrics/UpdateDeviceMetrics|should handle all device states correctly|/internal/utils/prometheus_test.go
-Prometheus metrics/UpdateDeviceMetrics|should handle all device types correctly|/internal/utils/prometheus_test.go
-Prometheus metrics/UpdateDeviceMetrics|should handle empty device list|/internal/utils/prometheus_test.go
-Prometheus metrics/UpdateDeviceMetrics|should reset previous metrics when updating|/internal/utils/prometheus_test.go
-Prometheus metrics/UpdateDeviceMetrics|should update metrics for a single device|/internal/utils/prometheus_test.go
-Prometheus metrics/UpdateDeviceMetrics|should update metrics for multiple devices|/internal/utils/prometheus_test.go
 Server/amd64|pseudo card health (amd64)|/pkg/server/server_test.go
 Server/general|can get pseudo card health request|/pkg/server/server_test.go
 Server/general|can update healths|/pkg/server/server_test.go

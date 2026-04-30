@@ -134,7 +134,7 @@ func (s *healthServer) StartSecureGRPCServer(socket string, tlsCertPath string, 
 		return err
 	}
 
-	var opts []grpc.ServerOption
+	opts := make([]grpc.ServerOption, 0, 1)
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
@@ -323,7 +323,10 @@ func (s *healthServer) RegisterForSpyreDevicesEventsWithDevices(initialDevices *
 }
 
 // checkForRemovedDevices compares current states with initial devices and marks missing ones as REMOVED
-func (s *healthServer) checkForRemovedDevices(currentStates []types.DeviceState, initialDeviceMap map[string]bool) []types.DeviceState {
+func (s *healthServer) checkForRemovedDevices(
+	currentStates []types.DeviceState,
+	initialDeviceMap map[string]bool,
+) []types.DeviceState {
 	if len(initialDeviceMap) == 0 {
 		// No initial devices to track, return current states as-is
 		return currentStates
@@ -413,7 +416,7 @@ func safeRemove(path string) error {
 }
 
 func (s *healthServer) getPbDevices(states []types.DeviceState) []*pb.Device {
-	deviceList := make([]*pb.Device, 0)
+	deviceList := make([]*pb.Device, 0, len(states))
 	for _, sd := range states {
 		deviceList = append(deviceList, sd.Device())
 	}
