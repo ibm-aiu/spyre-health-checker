@@ -54,16 +54,14 @@ func getLogger() *zap.SugaredLogger {
 type healthServer struct {
 	mu sync.RWMutex
 	pb.UnimplementedSpyreHealthServiceServer
-	updateQueue        chan []types.DeviceState
-	insecureSocket     string
-	secureSocket       string
-	insecureGrpcServer *grpc.Server
-	secureGrpcServer   *grpc.Server
-	vitals             *healthcheck.Vitals
-	streaming          atomic.Bool
-	healthHTTPServer   *http.Server
-	metricsHTTPServer  *http.Server
-	ready              atomic.Bool
+	updateQueue       chan []types.DeviceState
+	socket            string
+	grpcServer        *grpc.Server
+	vitals            *healthcheck.Vitals
+	streaming         atomic.Bool
+	healthHTTPServer  *http.Server
+	metricsHTTPServer *http.Server
+	ready             atomic.Bool
 }
 
 func NewServer(v *healthcheck.Vitals) *healthServer {
@@ -78,43 +76,6 @@ func NewServer(v *healthcheck.Vitals) *healthServer {
 	}
 	s.ready.Store(false)
 	return &s
-}
-
-func (s *healthServer) StartInsecureGRPCServer(socket string) error {
-	var log *zap.SugaredLogger
-	if err := safeRemove(socket); err != nil {
-		log = getLogger()
-		log.Errorf("failed to remove present %s: %v", socket, err)
-	}
-
-	lis, err := net.Listen("unix", socket)
-	if err != nil {
-		if log == nil {
-			log = getLogger()
-		}
-		log.Errorf("failed to listen: %v", err)
-		return err
-	}
-
-	if log == nil {
-		log = getLogger()
-	}
-	log.Infof("Starting insecure gRPC server on %s", socket)
-
-	grpcServer := grpc.NewServer()
-	pb.RegisterSpyreHealthServiceServer(grpcServer, s)
-	go func() {
-		if err := grpcServer.Serve(lis); err != nil {
-			if log == nil {
-				log = getLogger()
-			}
-			logger.Errorf("failed to serve insecure gRPC: %v", err)
-		}
-	}()
-	s.insecureSocket = socket
-	s.insecureGrpcServer = grpcServer
-	s.ready.Store(true)
-	return nil
 }
 
 func (s *healthServer) StartSecureGRPCServer(socket string, tlsCertPath string, tlsKeyPath string) error {
@@ -165,8 +126,8 @@ func (s *healthServer) StartSecureGRPCServer(socket string, tlsCertPath string, 
 			logger.Errorf("failed to serve secure gRPC: %v", err)
 		}
 	}()
-	s.secureSocket = socket
-	s.secureGrpcServer = grpcServer
+	s.socket = socket
+	s.grpcServer = grpcServer
 	s.ready.Store(true)
 	return nil
 }
@@ -391,20 +352,14 @@ func (s *healthServer) Stop() {
 		}
 	}
 
-	// Gracefully stop gRPC servers
-	if s.insecureGrpcServer != nil {
-		s.insecureGrpcServer.GracefulStop()
-	}
-	if s.secureGrpcServer != nil {
-		s.secureGrpcServer.GracefulStop()
+	// Gracefully stop gRPC server
+	if s.grpcServer != nil {
+		s.grpcServer.GracefulStop()
 	}
 
-	// Remove socket files
-	if err := safeRemove(s.insecureSocket); err != nil {
-		getLogger().Errorf("failed to remove present %s: %v", s.insecureSocket, err)
-	}
-	if err := safeRemove(s.secureSocket); err != nil {
-		getLogger().Errorf("failed to remove present %s: %v", s.secureSocket, err)
+	// Remove socket file
+	if err := safeRemove(s.socket); err != nil {
+		getLogger().Errorf("failed to remove present %s: %v", s.socket, err)
 	}
 }
 
