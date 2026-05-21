@@ -25,7 +25,6 @@ import (
 
 	healthcheck "github.com/ibm-aiu/spyre-health-checker/internal/healthcheck"
 	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
-	"github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	. "github.com/ibm-aiu/spyre-health-checker/pkg/server"
 	"github.com/ibm-aiu/spyre-health-checker/pkg/types"
@@ -114,7 +113,7 @@ var _ = Describe("Server", Ordered, func() {
 
 		It("can update healths", func() {
 			TestHealthServer.UpdateHealths([]types.DeviceState{
-				{PciAddress: "0000:1a:00.0", State: spyre.DEVICE_STATE_IN_ERROR},
+				{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_IN_ERROR},
 			})
 			Eventually(func(g Gomega) {
 				healths := c.GetHealths()
@@ -132,7 +131,7 @@ var _ = Describe("Server", Ordered, func() {
 			// which is thread-safe, preventing data races when vitals are updated concurrently
 			vitals := &healthcheck.Vitals{
 				States: []types.DeviceState{
-					{PciAddress: "0000:01:00.0", State: spyre.DEVICE_STATE_ONLINE},
+					{PciAddress: "0000:01:00.0", State: pb.DEVICE_STATE_ONLINE},
 				},
 			}
 			server := NewServer(vitals)
@@ -201,7 +200,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", healthHttpPort))
 				Expect(err).NotTo(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			})
@@ -210,7 +209,7 @@ var _ = Describe("Server", Ordered, func() {
 				// Server should already be ready from previous tests
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/readyz", healthHttpPort))
 				Expect(err).NotTo(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			})
@@ -224,7 +223,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", metricsPort))
 				Expect(err).NotTo(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			})
@@ -236,7 +235,7 @@ var _ = Describe("Server", Ordered, func() {
 					go func() {
 						resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", healthHttpPort))
 						Expect(err).NotTo(HaveOccurred())
-						defer resp.Body.Close()
+						defer func() { _ = resp.Body.Close() }()
 						Expect(resp.StatusCode).To(Equal(http.StatusOK))
 						done <- true
 					}()
@@ -263,7 +262,7 @@ var _ = Describe("Server", Ordered, func() {
 
 			It("should detect removed devices", func() {
 				// Create a client that uses the new RPC with initial devices
-				var opts []grpc.DialOption
+				opts := make([]grpc.DialOption, 0, 1)
 
 				// Use TLS credentials with test certificates
 				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
@@ -280,33 +279,33 @@ var _ = Describe("Server", Ordered, func() {
 
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
-				client := spyre.NewSpyreHealthServiceClient(conn)
+				client := pb.NewSpyreHealthServiceClient(conn)
 
 				// Define initial devices - include some that don't exist in current state
-				initialDevices := &spyre.Devices{
-					Devices: []*spyre.Device{
+				initialDevices := &pb.Devices{
+					Devices: []*pb.Device{
 						{
-							DeviceID: &spyre.DeviceID{
+							DeviceID: &pb.DeviceID{
 								PCIAddress: "0000:1a:00.0",
 							},
-							DeviceType:  spyre.DEVICE_TYPE_PF,
-							DeviceState: spyre.DEVICE_STATE_ONLINE,
+							DeviceType:  pb.DEVICE_TYPE_PF,
+							DeviceState: pb.DEVICE_STATE_ONLINE,
 						},
 						{
-							DeviceID: &spyre.DeviceID{
+							DeviceID: &pb.DeviceID{
 								PCIAddress: "0000:99:00.0", // This device doesn't exist
 							},
-							DeviceType:  spyre.DEVICE_TYPE_PF,
-							DeviceState: spyre.DEVICE_STATE_ONLINE,
+							DeviceType:  pb.DEVICE_TYPE_PF,
+							DeviceState: pb.DEVICE_STATE_ONLINE,
 						},
 						{
-							DeviceID: &spyre.DeviceID{
+							DeviceID: &pb.DeviceID{
 								PCIAddress: "0000:88:00.0", // This device doesn't exist
 							},
-							DeviceType:  spyre.DEVICE_TYPE_VF,
-							DeviceState: spyre.DEVICE_STATE_ONLINE,
+							DeviceType:  pb.DEVICE_TYPE_VF,
+							DeviceState: pb.DEVICE_STATE_ONLINE,
 						},
 					},
 				}
@@ -324,23 +323,23 @@ var _ = Describe("Server", Ordered, func() {
 
 				// Check that we received devices including REMOVED ones
 				removedCount := 0
-				foundDevices := make(map[string]spyre.DEVICE_STATE)
+				foundDevices := make(map[string]pb.DEVICE_STATE)
 				for _, device := range deviceList.Devices {
 					foundDevices[device.DeviceID.PCIAddress] = device.DeviceState
-					if device.DeviceState == spyre.DEVICE_STATE_REMOVED {
+					if device.DeviceState == pb.DEVICE_STATE_REMOVED {
 						removedCount++
 					}
 				}
 
 				// We should have at least 2 removed devices (0000:99:00.0 and 0000:88:00.0)
 				Expect(removedCount).To(BeNumerically(">=", 2))
-				Expect(foundDevices["0000:99:00.0"]).To(Equal(spyre.DEVICE_STATE_REMOVED))
-				Expect(foundDevices["0000:88:00.0"]).To(Equal(spyre.DEVICE_STATE_REMOVED))
+				Expect(foundDevices["0000:99:00.0"]).To(Equal(pb.DEVICE_STATE_REMOVED))
+				Expect(foundDevices["0000:88:00.0"]).To(Equal(pb.DEVICE_STATE_REMOVED))
 			})
 
 			It("should work with empty initial device list", func() {
 				// Create a client that uses the new RPC with empty initial devices
-				var opts []grpc.DialOption
+				opts := make([]grpc.DialOption, 0, 1)
 
 				// Use TLS credentials with test certificates
 				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
@@ -357,13 +356,13 @@ var _ = Describe("Server", Ordered, func() {
 
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
-				client := spyre.NewSpyreHealthServiceClient(conn)
+				client := pb.NewSpyreHealthServiceClient(conn)
 
 				// Empty initial devices - should behave like the old RPC
-				initialDevices := &spyre.Devices{
-					Devices: []*spyre.Device{},
+				initialDevices := &pb.Devices{
+					Devices: []*pb.Device{},
 				}
 
 				ctx, cancel := context.WithCancel(context.Background())
@@ -379,13 +378,13 @@ var _ = Describe("Server", Ordered, func() {
 
 				// No devices should be marked as REMOVED
 				for _, device := range deviceList.Devices {
-					Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
+					Expect(device.DeviceState).NotTo(Equal(pb.DEVICE_STATE_REMOVED))
 				}
 			})
 
 			It("should add new devices to tracking map", func() {
 				// Create a client that uses the new RPC with initial devices
-				var opts []grpc.DialOption
+				opts := make([]grpc.DialOption, 0, 1)
 
 				// Use TLS credentials with test certificates
 				cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
@@ -402,19 +401,19 @@ var _ = Describe("Server", Ordered, func() {
 
 				conn, err := grpc.NewClient("unix:"+TestSocket, opts...)
 				Expect(err).To(BeNil())
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
-				client := spyre.NewSpyreHealthServiceClient(conn)
+				client := pb.NewSpyreHealthServiceClient(conn)
 
 				// Define initial devices - only one device
-				initialDevices := &spyre.Devices{
-					Devices: []*spyre.Device{
+				initialDevices := &pb.Devices{
+					Devices: []*pb.Device{
 						{
-							DeviceID: &spyre.DeviceID{
+							DeviceID: &pb.DeviceID{
 								PCIAddress: "0000:1a:00.0",
 							},
-							DeviceType:  spyre.DEVICE_TYPE_PF,
-							DeviceState: spyre.DEVICE_STATE_ONLINE,
+							DeviceType:  pb.DEVICE_TYPE_PF,
+							DeviceState: pb.DEVICE_STATE_ONLINE,
 						},
 					},
 				}
@@ -432,8 +431,8 @@ var _ = Describe("Server", Ordered, func() {
 
 				// Now send an update with a new device
 				TestHealthServer.UpdateHealths([]types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: spyre.DEVICE_STATE_ONLINE},
-					{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE}, // New device
+					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE},
+					{PciAddress: "0000:2b:00.0", State: pb.DEVICE_STATE_ONLINE}, // New device
 				})
 
 				// Receive the update
@@ -446,14 +445,14 @@ var _ = Describe("Server", Ordered, func() {
 				for _, device := range deviceList.Devices {
 					if device.DeviceID.PCIAddress == "0000:2b:00.0" {
 						foundNewDevice = true
-						Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
+						Expect(device.DeviceState).NotTo(Equal(pb.DEVICE_STATE_REMOVED))
 					}
 				}
 				Expect(foundNewDevice).To(BeTrue())
 
 				// Send another update without the original device
 				TestHealthServer.UpdateHealths([]types.DeviceState{
-					{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE},
+					{PciAddress: "0000:2b:00.0", State: pb.DEVICE_STATE_ONLINE},
 				})
 
 				// Receive the update
@@ -466,7 +465,7 @@ var _ = Describe("Server", Ordered, func() {
 				for _, device := range deviceList.Devices {
 					if device.DeviceID.PCIAddress == "0000:1a:00.0" {
 						foundRemovedDevice = true
-						Expect(device.DeviceState).To(Equal(spyre.DEVICE_STATE_REMOVED))
+						Expect(device.DeviceState).To(Equal(pb.DEVICE_STATE_REMOVED))
 					}
 				}
 				Expect(foundRemovedDevice).To(BeTrue())
@@ -476,7 +475,7 @@ var _ = Describe("Server", Ordered, func() {
 				for _, device := range deviceList.Devices {
 					if device.DeviceID.PCIAddress == "0000:2b:00.0" {
 						foundNewDevice = true
-						Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
+						Expect(device.DeviceState).NotTo(Equal(pb.DEVICE_STATE_REMOVED))
 					}
 				}
 				Expect(foundNewDevice).To(BeTrue())
