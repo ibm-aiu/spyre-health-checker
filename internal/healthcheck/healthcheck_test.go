@@ -22,7 +22,7 @@ var _ = Describe("HealthChecker functions", func() {
 
 	It("UpdateStates() is actually callable at Runtime", func() {
 		vitals := Vitals{States: make([]types.DeviceState, 0)}
-		Expect(func() { vitals.UpdateStates() }).NotTo(Panic())
+		Expect(func() { _ = vitals.UpdateStates() }).NotTo(Panic())
 	})
 
 	It("UpdateStates() does not error with simple test scenario", func() {

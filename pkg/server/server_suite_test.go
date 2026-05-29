@@ -60,7 +60,7 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	var opts []grpc.DialOption
+	opts := make([]grpc.DialOption, 0, 1)
 
 	cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
 	Expect(err).To(BeNil())
@@ -93,7 +93,7 @@ func (c *Client) Start() {
 
 func (c *Client) Stop() {
 	c.cancel()
-	c.conn.Close()
+	_ = c.conn.Close()
 }
 
 func (c *Client) receive(stream pb.SpyreHealthService_RegisterForSpyreDevicesEventsClient) {
@@ -132,7 +132,7 @@ func TestServer(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	os.Setenv(utils.PseudoDeviceModeKey, "1")
+	_ = os.Setenv(utils.PseudoDeviceModeKey, "1")
 
 	ws := zapcore.AddSync(GinkgoWriter)
 
@@ -141,7 +141,7 @@ var _ = BeforeSuite(func() {
 
 	core := zapcore.NewCore(enc, ws, zap.DebugLevel)
 	uber := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.ErrorLevel))
-	defer uber.Sync()
+	defer func() { _ = uber.Sync() }()
 
 	crlog.SetLogger(zapr.NewLogger(uber))
 
@@ -150,9 +150,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).To(BeNil())
 
 	// Set environment variables to use test certificates
-	os.Setenv("SPYRE_TLS_CERT", TestCert)
-	os.Setenv("SPYRE_TLS_KEY", TestKey)
-	os.Setenv("SPYRE_TLS_CA", TestCert) // Use same cert as CA for self-signed
+	_ = os.Setenv("SPYRE_TLS_CERT", TestCert)
+	_ = os.Setenv("SPYRE_TLS_KEY", TestKey)
+	_ = os.Setenv("SPYRE_TLS_CA", TestCert) // Use same cert as CA for self-signed
 
 	TestHealthServer = startServer()
 })
@@ -165,9 +165,9 @@ var _ = AfterSuite(func() {
 	err = os.Unsetenv(utils.PseudoDeviceModeKey)
 	Expect(err).To(BeNil())
 	// Clean up test TLS environment variables
-	os.Unsetenv("SPYRE_TLS_CERT")
-	os.Unsetenv("SPYRE_TLS_KEY")
-	os.Unsetenv("SPYRE_TLS_CA")
+	_ = os.Unsetenv("SPYRE_TLS_CERT")
+	_ = os.Unsetenv("SPYRE_TLS_KEY")
+	_ = os.Unsetenv("SPYRE_TLS_CA")
 })
 
 func createTestCertificates() error {
@@ -208,7 +208,7 @@ func createTestCertificates() error {
 	if err != nil {
 		return err
 	}
-	defer certFile.Close()
+	defer func() { _ = certFile.Close() }()
 
 	if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
 		return err
@@ -220,7 +220,7 @@ func createTestCertificates() error {
 	if err != nil {
 		return err
 	}
-	defer keyFile.Close()
+	defer func() { _ = keyFile.Close() }()
 
 	privateKeyBytes, err := x509.MarshalECPrivateKey(privateKey)
 	if err != nil {

@@ -26,11 +26,11 @@ func TestHealthCheck(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	os.Setenv(utils.PseudoDeviceModeKey, "1")
+	_ = os.Setenv(utils.PseudoDeviceModeKey, "1")
 
 	log.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 })
 
 var _ = AfterSuite(func() {
-	os.Unsetenv(utils.PseudoDeviceModeKey)
+	_ = os.Unsetenv(utils.PseudoDeviceModeKey)
 })
