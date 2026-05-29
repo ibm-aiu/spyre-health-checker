@@ -3,9 +3,12 @@
 # | SPDX-License-Identifier: Apache-2.0                               |
 # +-------------------------------------------------------------------+
 
+# Enable automatic Go toolchain management
+export GOTOOLCHAIN = auto
+
 GOLANG_VERSION		?= $(shell cd $(REPO_ROOT) && go list -f {{.GoVersion}} -m)
 BUILDER_IMAGE		?= registry.access.redhat.com/ubi9/go-toolset:9.6-1754467841
-GOTOOLCHAIN			?= go1.24.13
+GOTOOLCHAIN			?= go$(GOLANG_VERSION)
 MAKEFILE_PATH		:= $(abspath $(lastword $(MAKEFILE_LIST)))
 REPO_ROOT			:= $(abspath $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
 CURRENT_DIR			:= $(shell pwd)
@@ -59,7 +62,7 @@ YQ				?= $(LOCALBIN)/yq
 
 ## Tool Versions
 ENVTEST_K8S_VERSION		?= 1.33
-GOLANGCI_LINT_VERSION	?= 1.64.8
+GOLANGCI_LINT_VERSION	?= 2.11.4
 GINKGO_VERSION			?= v2.28.1
 YQ_VERSION				?= v4.29.2
 
@@ -171,14 +174,14 @@ build: vendor ## Build local binary
 
 .PHONY: lint
 lint: golangci-lint vendor  ## Run golangci-lint against code.
-	$(CGO_FLAGS) $(GOLANGCI_LINT) run --sort-results --config $(REPO_ROOT)/.golangci.yaml --go $(GOLANG_VERSION)
+	$(GOLANGCI_LINT) run --config $(REPO_ROOT)/.golangci.yaml
 
 .PHONY: checks
 checks: fmt vet lint # Run fmt vet lint
 
 .PHONY: lint-fix
 lint-fix: golangci-lint vendor ## Run golangci-lint against code.
-	$(CGO_FLAGS) $(GOLANGCI_LINT) run --fix --config $(REPO_ROOT)/.golangci.yaml --go $(GOLANG_VERSION)
+	$(GOLANGCI_LINT) run --fix --config $(REPO_ROOT)/.golangci.yaml
 
 .PHONY: vulcheck
 vulcheck: govulncheck ## Scan for golang vulnerabilities

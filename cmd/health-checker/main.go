@@ -28,12 +28,24 @@ func getEnvOrDefault(key, defaultValue string) string {
 }
 
 var (
-	socket      = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
-	timer       = flag.String("timer", "1h", "Run all tests periodically on each node. Time set in interval format. Defaults to 1h")
+	socket = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
+	timer  = flag.String(
+		"timer",
+		"1h",
+		"Run all tests periodically on each node. Time set in interval format. Defaults to 1h",
+	)
 	healthPort  = flag.Int("health-port", 8080, "HTTP port for server health check endpoints")
 	metricsPort = flag.Int("metrics-port", 8081, "HTTP port for Prometheus compatible card metrics")
-	tlsCert     = flag.String("tls-cert", getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"), "Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)")
-	tlsKey      = flag.String("tls-key", getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"), "Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)")
+	tlsCert     = flag.String(
+		"tls-cert",
+		getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"),
+		"Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)",
+	)
+	tlsKey = flag.String(
+		"tls-key",
+		getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"),
+		"Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)",
+	)
 )
 
 func main() {

@@ -67,29 +67,61 @@ func IsPseudoDeviceMode() bool {
 // Pseudo devices are align with pseudo device in device plugin.
 func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 	for _, card := range GoodCards {
-		healths = append(healths, types.DeviceState{PciAddress: card, Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE})
+		healths = append(healths, types.DeviceState{
+			PciAddress: card,
+			Type:       pb.DEVICE_TYPE_PF,
+			State:      pb.DEVICE_STATE_ONLINE,
+		})
 		if PseudoRuntimeArch != sriovVFArch {
 			vf1 := getPseudoVfAddress(card, 1)
 			vf2 := getPseudoVfAddress(card, 2)
-			healths = append(healths, types.DeviceState{PciAddress: vf1, Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_ONLINE})
-			healths = append(healths, types.DeviceState{PciAddress: vf2, Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_ONLINE})
+			healths = append(healths, types.DeviceState{
+				PciAddress: vf1,
+				Type:       pb.DEVICE_TYPE_VF,
+				State:      pb.DEVICE_STATE_ONLINE,
+			})
+			healths = append(healths, types.DeviceState{
+				PciAddress: vf2,
+				Type:       pb.DEVICE_TYPE_VF,
+				State:      pb.DEVICE_STATE_ONLINE,
+			})
 		}
 	}
 	for _, card := range BadCards {
-		healths = append(healths, types.DeviceState{PciAddress: card, Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_IN_ERROR})
+		healths = append(healths, types.DeviceState{
+			PciAddress: card,
+			Type:       pb.DEVICE_TYPE_PF,
+			State:      pb.DEVICE_STATE_IN_ERROR,
+		})
 		if PseudoRuntimeArch != sriovVFArch {
 			vf1 := getPseudoVfAddress(card, 1)
 			vf2 := getPseudoVfAddress(card, 2)
-			healths = append(healths, types.DeviceState{PciAddress: vf1, Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_IN_ERROR})
-			healths = append(healths, types.DeviceState{PciAddress: vf2, Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_IN_ERROR})
+			healths = append(healths, types.DeviceState{
+				PciAddress: vf1,
+				Type:       pb.DEVICE_TYPE_VF,
+				State:      pb.DEVICE_STATE_IN_ERROR,
+			})
+			healths = append(healths, types.DeviceState{
+				PciAddress: vf2,
+				Type:       pb.DEVICE_TYPE_VF,
+				State:      pb.DEVICE_STATE_IN_ERROR,
+			})
 		}
 	}
 	if PseudoRuntimeArch == sriovVFArch {
 		for _, card := range GoodIsolatedVFCards {
-			healths = append(healths, types.DeviceState{PciAddress: card, Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_ONLINE})
+			healths = append(healths, types.DeviceState{
+				PciAddress: card,
+				Type:       pb.DEVICE_TYPE_VF,
+				State:      pb.DEVICE_STATE_ONLINE,
+			})
 		}
 		for _, card := range BadIsolatedVFCards {
-			healths = append(healths, types.DeviceState{PciAddress: card, Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_IN_ERROR})
+			healths = append(healths, types.DeviceState{
+				PciAddress: card,
+				Type:       pb.DEVICE_TYPE_VF,
+				State:      pb.DEVICE_STATE_IN_ERROR,
+			})
 		}
 	}
 
