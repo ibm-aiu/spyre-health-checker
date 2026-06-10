@@ -22,11 +22,16 @@ COPY internal/ internal/
 # Build
 ARG BUILD_FLAGS=""
 
-ENV GOTOOLCHAIN="auto"
+ARG GOTOOLCHAIN=local
+ENV GOTOOLCHAIN=${GOTOOLCHAIN}
+ENV GOPROXY="https://proxy.golang.org,direct"
 
-RUN echo "TARGETARCH = '${TARGETARCH}' TARGETOS='${TARGETOS}'" && \
-    echo "GO ENV DUMP: " && go env GOVERSION && go env GOTOOLDIR && \
-    CGO_ENABLED=1 GOOS=linux \
+RUN echo "TARGETARCH: ${TARGETARCH}" && \
+    echo "TARGETOS: ${TARGETOS}" && \
+    echo -n "GOVERSION: " && go env GOVERSION && \
+    echo -n "GOTOOLCHAIN: " && go env GOTOOLCHAIN && \
+    echo -n "GOPROXY: " && go env GOPROXY && \
+    CGO_ENABLED=1 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" GO111MODULE=on GOTOOLCHAIN="${GOTOOLCHAIN}" \
     go build ${BUILD_FLAGS} -mod vendor -tags strictfipsruntime -a -o spyre-health-checker ./cmd/health-checker
 
 RUN dnf --installroot=/tmp/ubi-micro \

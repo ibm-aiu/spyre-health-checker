@@ -7,7 +7,6 @@
 export GOTOOLCHAIN = auto
 
 GOLANG_VERSION		?= $(shell cd $(REPO_ROOT) && go list -f {{.GoVersion}} -m)
-GOTOOLCHAIN			?= go$(GOLANG_VERSION)
 MAKEFILE_PATH		:= $(abspath $(lastword $(MAKEFILE_LIST)))
 REPO_ROOT			:= $(abspath $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
 CURRENT_DIR			:= $(shell pwd)
@@ -194,6 +193,7 @@ docker-build: vendor ## Build spyre health checker image for build host architec
 	--tag $(IMAGE) \
 	--build-arg VERSION="$(VERSION)" \
 	--build-arg BUILD_FLAGS="$(DOCKER_GO_BUILD_FLAGS)" \
+	--build-arg GOTOOLCHAIN=$(GOTOOLCHAIN) \
 	--file $(DOCKERFILE) $(CURDIR)
 
 .PHONY: docker-push
