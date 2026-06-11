@@ -7,12 +7,10 @@
 export GOTOOLCHAIN = auto
 
 GOLANG_VERSION		?= $(shell cd $(REPO_ROOT) && go list -f {{.GoVersion}} -m)
-BUILDER_IMAGE		?= registry.access.redhat.com/ubi9/go-toolset:9.6-1754467841
-GOTOOLCHAIN			?= go$(GOLANG_VERSION)
 MAKEFILE_PATH		:= $(abspath $(lastword $(MAKEFILE_LIST)))
 REPO_ROOT			:= $(abspath $(patsubst %/,%,$(dir $(MAKEFILE_PATH))))
 CURRENT_DIR			:= $(shell pwd)
-VERSION				?= $(shell $(REPO_ROOT)/VERSION)
+VERSION				?= $(shell cat $(REPO_ROOT)/VERSION)
 REGISTRY			?= docker.io/spyre-operator
 DOCKER				?= $(shell command -v podman 2> /dev/null || echo docker)
 DOCKERFILE			= $(REPO_ROOT)/Dockerfile
@@ -194,8 +192,8 @@ docker-build: vendor ## Build spyre health checker image for build host architec
 	$(DOCKER) build $(DOCKER_BUILD_OPTS) --pull \
 	--tag $(IMAGE) \
 	--build-arg VERSION="$(VERSION)" \
-	--build-arg BUILDER_IMAGE="$(BUILDER_IMAGE)" \
 	--build-arg BUILD_FLAGS="$(DOCKER_GO_BUILD_FLAGS)" \
+	--build-arg GOTOOLCHAIN=$(GOTOOLCHAIN) \
 	--file $(DOCKERFILE) $(CURDIR)
 
 .PHONY: docker-push
