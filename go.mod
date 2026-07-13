@@ -1,6 +1,6 @@
 module github.com/ibm-aiu/spyre-health-checker
 
-go 1.25.9
+go 1.26.4
 
 require (
 	github.com/go-logr/zapr v1.3.0
