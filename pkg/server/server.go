@@ -11,10 +11,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,8 +63,11 @@ type healthServer struct {
 	vitals            *healthcheck.Vitals
 	streaming         atomic.Bool
 	healthHTTPServer  *http.Server
+	httpsServer       *http.Server
 	metricsHTTPServer *http.Server
 	ready             atomic.Bool
+	overridesMu       sync.RWMutex
+	overrides         map[string]types.DeviceState
 }
 
 func NewServer(v *healthcheck.Vitals) *healthServer {
@@ -74,9 +79,56 @@ func NewServer(v *healthcheck.Vitals) *healthServer {
 	s := healthServer{
 		updateQueue: make(chan []types.DeviceState),
 		vitals:      v,
+		overrides:   make(map[string]types.DeviceState),
 	}
 	s.ready.Store(false)
 	return &s
+}
+
+// applyOverrides merges the manual override map on top of the provided states.
+// Overrides win: any device whose PCI address appears in the override map has its
+// state replaced. Overrides for devices not in the current live states are appended
+// as additional entries.
+func (s *healthServer) applyOverrides(states []types.DeviceState) []types.DeviceState {
+	s.overridesMu.RLock()
+	defer s.overridesMu.RUnlock()
+	if len(s.overrides) == 0 {
+		return states
+	}
+	seen := make(map[string]bool, len(states))
+	result := make([]types.DeviceState, len(states))
+	copy(result, states)
+	for i, st := range result {
+		if ov, ok := s.overrides[st.PciAddress]; ok && ov.State != st.State {
+			// Preserve the live device type; override only the state and source.
+			result[i] = types.DeviceState{
+				PciAddress: st.PciAddress,
+				Type:       st.Type,
+				State:      ov.State,
+				Source:     "override",
+			}
+		}
+		seen[st.PciAddress] = true
+	}
+	// Append overrides for devices not present in the live states.
+	for pci, ov := range s.overrides {
+		if !seen[pci] {
+			result = append(result, types.DeviceState{
+				PciAddress: ov.PciAddress,
+				Type:       ov.Type,
+				State:      ov.State,
+				Source:     "override",
+			})
+		}
+	}
+	return result
+}
+
+// AppliedStates returns the current live states with the override map merged in.
+// Use this instead of vitals.GetVitalStates() wherever the full effective view
+// (including manual overrides) is required — e.g. when updating Prometheus metrics.
+func (s *healthServer) AppliedStates() []types.DeviceState {
+	return s.applyOverrides(s.vitals.GetVitalStates())
 }
 
 func (s *healthServer) StartSecureGRPCServer(socket, tlsCertPath, tlsKeyPath, caCertPath string) error {
@@ -127,6 +179,141 @@ func (s *healthServer) StartSecureGRPCServer(socket, tlsCertPath, tlsKeyPath, ca
 	return nil
 }
 
+// stateFromString parses a state name for manual device overrides.
+// Only ONLINE and RUNNING_DIAGNOSTICS are accepted; all other values return (0, false).
+func stateFromString(s string) (pb.DEVICE_STATE, bool) {
+	switch strings.ToUpper(s) {
+	case "ONLINE":
+		return pb.DEVICE_STATE_ONLINE, true
+	case "RUNNING_DIAGNOSTICS":
+		return pb.DEVICE_STATE_RUNNING_DIAGNOSTICS, true
+	default:
+		return 0, false
+	}
+}
+
+// registerOverrideRoutes mounts GET/POST/DELETE /override on mux.
+func (s *healthServer) registerOverrideRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/override", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			s.handleOverrideGet(w, r)
+		case http.MethodPost:
+			s.handleOverridePost(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	// DELETE /override/{pciAddress}
+	mux.HandleFunc("/override/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.handleOverrideDelete(w, r)
+	})
+}
+
+type overrideRequest struct {
+	Devices []overrideEntry `json:"devices"`
+}
+
+type overrideEntry struct {
+	PCIAddress string `json:"pciAddress"`
+	State      string `json:"state"`
+}
+
+func (s *healthServer) handleOverridePost(w http.ResponseWriter, r *http.Request) {
+	var req overrideRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Validate all entries first before mutating state
+	parsed := make([]types.DeviceState, 0, len(req.Devices))
+	for _, entry := range req.Devices {
+		state, ok := stateFromString(entry.State)
+		if !ok {
+			http.Error(w, "invalid or disallowed state: "+entry.State, http.StatusBadRequest)
+			return
+		}
+		parsed = append(parsed, types.DeviceState{PciAddress: entry.PCIAddress, State: state, Source: "override"})
+	}
+	s.overridesMu.Lock()
+	for _, ds := range parsed {
+		s.overrides[ds.PciAddress] = ds
+	}
+	s.overridesMu.Unlock()
+	overridden := make([]string, len(parsed))
+	for i, ds := range parsed {
+		overridden[i] = ds.PciAddress
+	}
+	getLogger().Infof("manual overrides set: %v", overridden)
+	// Push the current live states through the override layer immediately so
+	// connected gRPC clients receive the change without waiting for the next tick.
+	s.UpdateHealths(s.vitals.GetVitalStates())
+	setJSONContentType(w)
+	_ = json.NewEncoder(w).Encode(map[string]any{"overridden": overridden})
+}
+
+func (s *healthServer) handleOverrideDelete(w http.ResponseWriter, r *http.Request) {
+	pci := strings.TrimPrefix(r.URL.Path, "/override/")
+	if pci == "" {
+		http.Error(w, "missing PCI address in path", http.StatusBadRequest)
+		return
+	}
+	s.overridesMu.Lock()
+	_, exists := s.overrides[pci]
+	if exists {
+		delete(s.overrides, pci)
+	}
+	s.overridesMu.Unlock()
+	if !exists {
+		http.Error(w, "no override for "+pci, http.StatusNotFound)
+		return
+	}
+	getLogger().Infof("manual override removed: %s", pci)
+	// Push live states immediately so clients see the override lifted without
+	// waiting for the next periodic tick.
+	s.UpdateHealths(s.vitals.GetVitalStates())
+	setJSONContentType(w)
+	_ = json.NewEncoder(w).Encode(map[string]any{"removed": pci})
+}
+
+func (s *healthServer) handleOverrideGet(w http.ResponseWriter, _ *http.Request) {
+	s.overridesMu.RLock()
+	entries := make([]overrideEntry, 0, len(s.overrides))
+	for _, ov := range s.overrides {
+		entries = append(entries, overrideEntry{
+			PCIAddress: ov.PciAddress,
+			State:      ov.State.String(),
+		})
+	}
+	s.overridesMu.RUnlock()
+	setJSONContentType(w)
+	_ = json.NewEncoder(w).Encode(map[string]any{"overrides": entries})
+}
+
+// setJSONContentType sets the Content-Type response header to application/json.
+func setJSONContentType(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+}
+
+// handleReadyz is the /readyz handler shared by both HTTP and HTTPS health servers.
+func (s *healthServer) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+	if s.ready.Load() {
+		w.WriteHeader(http.StatusOK)
+		if _, err := fmt.Fprintf(w, "Ready"); err != nil {
+			getLogger().Warnf("failed to write readyz response: %v", err)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if _, err := fmt.Fprintf(w, "Not Ready"); err != nil {
+		getLogger().Warnf("failed to write readyz response: %v", err)
+	}
+}
+
 // StartHealthHTTPServer starts the HTTP server for server health check endpoints
 func (s *healthServer) StartHealthHTTPServer(port int) error {
 	mux := http.NewServeMux()
@@ -140,19 +327,9 @@ func (s *healthServer) StartHealthHTTPServer(port int) error {
 	})
 
 	// Readiness probe - returns 200 only if gRPC server is ready
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		if s.ready.Load() {
-			w.WriteHeader(http.StatusOK)
-			if _, err := fmt.Fprintf(w, "Ready"); err != nil {
-				getLogger().Warnf("failed to write readyz response: %v", err)
-			}
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			if _, err := fmt.Fprintf(w, "Not Ready"); err != nil {
-				getLogger().Warnf("failed to write readyz response: %v", err)
-			}
-		}
-	})
+	mux.HandleFunc("/readyz", s.handleReadyz)
+
+	s.registerOverrideRoutes(mux)
 
 	s.healthHTTPServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
@@ -162,6 +339,55 @@ func (s *healthServer) StartHealthHTTPServer(port int) error {
 	go func() {
 		if err := s.healthHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			getLogger().Errorf("health HTTP server error: %v", err)
+		}
+	}()
+
+	return nil
+}
+
+// StartHealthHTTPSServer starts the health HTTP server over mTLS.
+// It serves the same /healthz, /readyz, and /override endpoints as StartHealthHTTPServer
+// but requires a valid client certificate signed by the provided CA.
+func (s *healthServer) StartHealthHTTPSServer(port int, tlsCertPath, tlsKeyPath, caCertPath string) error {
+	cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to load TLS credentials: %w", err) // pragma: allowlist secret
+	}
+	caCert, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return fmt.Errorf("failed to read CA certificate: %w", err)
+	}
+	certPool := x509.NewCertPool()
+	certPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientCAs:    certPool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := fmt.Fprintf(w, "OK"); err != nil {
+			getLogger().Warnf("failed to write healthz response: %v", err)
+		}
+	})
+	mux.HandleFunc("/readyz", s.handleReadyz)
+	s.registerOverrideRoutes(mux)
+
+	lis, err := tls.Listen("tcp", fmt.Sprintf(":%d", port), tlsConfig)
+	if err != nil {
+		return fmt.Errorf("failed to listen on HTTPS port %d: %w", port, err)
+	}
+
+	s.httpsServer = &http.Server{Handler: mux}
+	getLogger().Infof("mTLS enabled for HTTPS override server on port %d using cert: %s", port, tlsCertPath)
+
+	go func() {
+		if err := s.httpsServer.Serve(lis); err != nil && err != http.ErrServerClosed {
+			getLogger().Errorf("HTTPS override server error: %v", err)
 		}
 	}()
 
@@ -194,7 +420,7 @@ func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 	log := getLogger()
 	log.Infof("register health stream")
 	devices := pb.Devices{
-		Devices: s.getPbDevices(s.vitals.GetVitalStates()),
+		Devices: s.getPbDevices(s.applyOverrides(s.vitals.GetVitalStates())),
 	}
 	if err := stream.Send(&devices); err != nil {
 		return err
@@ -211,7 +437,7 @@ func (s *healthServer) RegisterForSpyreDevicesEvents(_ *emptypb.Empty,
 				return nil
 			}
 			devices := pb.Devices{
-				Devices: s.getPbDevices(states),
+				Devices: s.getPbDevices(s.applyOverrides(states)),
 			}
 			if err := stream.Send(&devices); err != nil {
 				log.Warnf("failed to send, end connection")
@@ -240,7 +466,7 @@ func (s *healthServer) RegisterForSpyreDevicesEventsWithDevices(initialDevices *
 
 	// Get current states and check for removed devices
 	currentStates := s.vitals.GetVitalStates()
-	statesToSend := s.checkForRemovedDevices(currentStates, initialDeviceMap)
+	statesToSend := s.checkForRemovedDevices(s.applyOverrides(currentStates), initialDeviceMap)
 
 	// Set streaming flag before sending first message to avoid race condition
 	s.streaming.Store(true)
@@ -263,7 +489,7 @@ func (s *healthServer) RegisterForSpyreDevicesEventsWithDevices(initialDevices *
 				return nil
 			}
 			// Check for removed devices in updates and update the tracking map with new devices
-			statesToSend := s.checkForRemovedDevices(states, initialDeviceMap)
+			statesToSend := s.checkForRemovedDevices(s.applyOverrides(states), initialDeviceMap)
 
 			// Add any new devices to the tracking map so they won't be marked as REMOVED later
 			for _, state := range states {
@@ -324,7 +550,7 @@ func (s *healthServer) UpdateHealths(states []types.DeviceState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.streaming.Load() {
-		s.updateQueue <- states
+		s.updateQueue <- s.applyOverrides(states)
 	}
 }
 
@@ -338,6 +564,15 @@ func (s *healthServer) Stop() {
 		defer cancel()
 		if err := s.healthHTTPServer.Shutdown(ctx); err != nil {
 			getLogger().Errorf("Health HTTP server shutdown error: %v", err)
+		}
+	}
+
+	// Shutdown HTTPS override server gracefully
+	if s.httpsServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.httpsServer.Shutdown(ctx); err != nil {
+			getLogger().Errorf("HTTPS override server shutdown error: %v", err)
 		}
 	}
 

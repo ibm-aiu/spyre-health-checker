@@ -71,6 +71,7 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 			PciAddress: card,
 			Type:       pb.DEVICE_TYPE_PF,
 			State:      pb.DEVICE_STATE_ONLINE,
+			Source:     "lspci",
 		})
 		if PseudoRuntimeArch != sriovVFArch {
 			vf1 := getPseudoVfAddress(card, 1)
@@ -79,11 +80,13 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: vf1,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_ONLINE,
+				Source:     "lspci",
 			})
 			healths = append(healths, types.DeviceState{
 				PciAddress: vf2,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_ONLINE,
+				Source:     "lspci",
 			})
 		}
 	}
@@ -92,6 +95,7 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 			PciAddress: card,
 			Type:       pb.DEVICE_TYPE_PF,
 			State:      pb.DEVICE_STATE_IN_ERROR,
+			Source:     "lspci",
 		})
 		if PseudoRuntimeArch != sriovVFArch {
 			vf1 := getPseudoVfAddress(card, 1)
@@ -100,11 +104,13 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: vf1,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_IN_ERROR,
+				Source:     "lspci",
 			})
 			healths = append(healths, types.DeviceState{
 				PciAddress: vf2,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_IN_ERROR,
+				Source:     "lspci",
 			})
 		}
 	}
@@ -114,6 +120,7 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: card,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_ONLINE,
+				Source:     "lspci",
 			})
 		}
 		for _, card := range BadIsolatedVFCards {
@@ -121,6 +128,7 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: card,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_IN_ERROR,
+				Source:     "lspci",
 			})
 		}
 	}

@@ -8,10 +8,15 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -480,6 +485,196 @@ var _ = Describe("Server", Ordered, func() {
 				}
 				Expect(foundNewDevice).To(BeTrue())
 			})
+		})
+	})
+
+	Describe("Override HTTP endpoint", func() {
+		var httpsClient *http.Client
+
+		BeforeEach(func() {
+			// Build an mTLS client using the test certificate as both client cert and CA
+			cert, err := tls.LoadX509KeyPair(TestCert, TestKey)
+			Expect(err).To(BeNil())
+
+			caCert, err := os.ReadFile(TestCert)
+			Expect(err).To(BeNil())
+			pool := x509.NewCertPool()
+			Expect(pool.AppendCertsFromPEM(caCert)).To(BeTrue())
+
+			httpsClient = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						Certificates: []tls.Certificate{cert},
+						RootCAs:      pool,
+						MinVersion:   tls.VersionTLS12,
+					},
+				},
+			}
+		})
+
+		AfterEach(func() {
+			// Clear all overrides between tests
+			req, err := http.NewRequest(http.MethodGet,
+				fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort), nil)
+			Expect(err).To(BeNil())
+			resp, err := httpsClient.Do(req)
+			Expect(err).To(BeNil())
+			defer func() { _ = resp.Body.Close() }()
+
+			var body map[string]json.RawMessage
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(BeNil())
+			var overrides []map[string]string
+			Expect(json.Unmarshal(body["overrides"], &overrides)).To(BeNil())
+			for _, ov := range overrides {
+				delReq, err := http.NewRequest(http.MethodDelete,
+					fmt.Sprintf("https://localhost:%d/override/%s", TestHTTPSPort, ov["pciAddress"]), nil)
+				Expect(err).To(BeNil())
+				delResp, err := httpsClient.Do(delReq)
+				Expect(err).To(BeNil())
+				_ = delResp.Body.Close()
+			}
+		})
+
+		It("GET /override returns empty list initially", func() {
+			resp, err := httpsClient.Get(fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort))
+			Expect(err).To(BeNil())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var body map[string]json.RawMessage
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(BeNil())
+			var overrides []any
+			Expect(json.Unmarshal(body["overrides"], &overrides)).To(BeNil())
+			Expect(overrides).To(BeEmpty())
+		})
+
+		It("POST /override sets a device state", func() {
+			payload := `{"devices":[{"pciAddress":"0000:aa:00.0","state":"RUNNING_DIAGNOSTICS"}]}`
+			resp, err := httpsClient.Post(
+				fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort),
+				"application/json",
+				bytes.NewBufferString(payload),
+			)
+			Expect(err).To(BeNil())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var body map[string]json.RawMessage
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(BeNil())
+			var overridden []string
+			Expect(json.Unmarshal(body["overridden"], &overridden)).To(BeNil())
+			Expect(overridden).To(ConsistOf("0000:aa:00.0"))
+
+			// Verify it appears in GET
+			resp2, err := httpsClient.Get(fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort))
+			Expect(err).To(BeNil())
+			defer func() { _ = resp2.Body.Close() }()
+			var body2 map[string]json.RawMessage
+			Expect(json.NewDecoder(resp2.Body).Decode(&body2)).To(BeNil())
+			var entries []map[string]string
+			Expect(json.Unmarshal(body2["overrides"], &entries)).To(BeNil())
+			Expect(entries).To(HaveLen(1))
+			Expect(entries[0]["pciAddress"]).To(Equal("0000:aa:00.0"))
+			Expect(entries[0]["state"]).To(Equal("RUNNING_DIAGNOSTICS"))
+		})
+
+		It("DELETE /override/{pci} removes an override", func() {
+			// Set first
+			payload := `{"devices":[{"pciAddress":"0000:bb:00.0","state":"ONLINE"}]}`
+			resp, err := httpsClient.Post(
+				fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort),
+				"application/json",
+				bytes.NewBufferString(payload),
+			)
+			Expect(err).To(BeNil())
+			_ = resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			// Delete
+			delReq, err := http.NewRequest(http.MethodDelete,
+				fmt.Sprintf("https://localhost:%d/override/0000:bb:00.0", TestHTTPSPort), nil)
+			Expect(err).To(BeNil())
+			delResp, err := httpsClient.Do(delReq)
+			Expect(err).To(BeNil())
+			defer func() { _ = delResp.Body.Close() }()
+			Expect(delResp.StatusCode).To(Equal(http.StatusOK))
+
+			var body map[string]json.RawMessage
+			Expect(json.NewDecoder(delResp.Body).Decode(&body)).To(BeNil())
+			var removed string
+			Expect(json.Unmarshal(body["removed"], &removed)).To(BeNil())
+			Expect(removed).To(Equal("0000:bb:00.0"))
+
+			// Gone from GET
+			resp2, err := httpsClient.Get(fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort))
+			Expect(err).To(BeNil())
+			defer func() { _ = resp2.Body.Close() }()
+			var body2 map[string]json.RawMessage
+			Expect(json.NewDecoder(resp2.Body).Decode(&body2)).To(BeNil())
+			var entries []any
+			Expect(json.Unmarshal(body2["overrides"], &entries)).To(BeNil())
+			Expect(entries).To(BeEmpty())
+		})
+
+		It("DELETE /override/{pci} returns 404 for unknown address", func() {
+			delReq, err := http.NewRequest(http.MethodDelete,
+				fmt.Sprintf("https://localhost:%d/override/0000:ff:00.0", TestHTTPSPort), nil)
+			Expect(err).To(BeNil())
+			delResp, err := httpsClient.Do(delReq)
+			Expect(err).To(BeNil())
+			defer func() { _ = delResp.Body.Close() }()
+			Expect(delResp.StatusCode).To(Equal(http.StatusNotFound))
+		})
+
+		It("POST /override returns 400 for invalid state", func() {
+			payload := `{"devices":[{"pciAddress":"0000:cc:00.0","state":"FLYING"}]}`
+			resp, err := httpsClient.Post(
+				fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort),
+				"application/json",
+				bytes.NewBufferString(payload),
+			)
+			Expect(err).To(BeNil())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).To(BeNil())
+			Expect(string(body)).To(ContainSubstring("FLYING"))
+		})
+
+		It("POST /override returns 400 for any state other than ONLINE and RUNNING_DIAGNOSTICS", func() {
+			for _, state := range []string{
+				"REMOVED",
+				"DEVICE_STATE_UNSPECIFIED",
+				"OFFLINE",
+				"BOOTING",
+				"SHUTTING_DOWN",
+				"IN_ERROR",
+			} {
+				payload := fmt.Sprintf(`{"devices":[{"pciAddress":"0000:dd:00.0","state":%q}]}`, state)
+				resp, err := httpsClient.Post(
+					fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort),
+					"application/json",
+					bytes.NewBufferString(payload),
+				)
+				Expect(err).To(BeNil())
+				defer func() { _ = resp.Body.Close() }()
+				Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			}
+		})
+
+		It("request without a client certificate is rejected", func() {
+			// Plain client — no cert presented
+			bareClient := &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: true, //nolint:gosec // intentional for test
+						MinVersion:         tls.VersionTLS12,
+					},
+				},
+			}
+			_, err := bareClient.Get(fmt.Sprintf("https://localhost:%d/override", TestHTTPSPort))
+			// The server drops the connection when the client presents no cert
+			Expect(err).To(HaveOccurred())
 		})
 	})
 

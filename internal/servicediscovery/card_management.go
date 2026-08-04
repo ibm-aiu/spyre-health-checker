@@ -9,6 +9,7 @@ package servicediscovery
 
 import (
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
+	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 )
 
 type CardManagement struct {
@@ -27,6 +28,17 @@ func (d SimplifiedDevice) Device() *pb.Device {
 		},
 		DeviceType:  pb.DEVICE_TYPE_PF,
 		DeviceState: d.State,
+	}
+}
+
+// ToDeviceState converts a SimplifiedDevice to a types.DeviceState tagged with
+// source "cardmgmt".
+func (d SimplifiedDevice) ToDeviceState() types.DeviceState {
+	return types.DeviceState{
+		PciAddress: d.PciAddress,
+		Type:       pb.DEVICE_TYPE_PF,
+		State:      d.State,
+		Source:     "cardmgmt",
 	}
 }
 

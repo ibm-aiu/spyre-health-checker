@@ -253,7 +253,7 @@ func parseLSPCI(output string) []types.DeviceState {
 		//			state = pb.DEVICE_STATE_IN_ERROR
 		//		}
 
-		states = append(states, types.DeviceState{PciAddress: di.PCIAddress, Type: devType, State: state})
+		states = append(states, types.DeviceState{PciAddress: di.PCIAddress, Type: devType, State: state, Source: "lspci"})
 	}
 	return states
 }

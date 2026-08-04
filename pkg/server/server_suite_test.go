@@ -18,6 +18,7 @@ import (
 	"encoding/pem"
 	"io"
 	"math/big"
+	"net"
 	"os"
 	"sync"
 	"testing"
@@ -43,13 +44,24 @@ import (
 )
 
 var (
-	TestSocket  = "checker.sock"
-	TestCertDir = "test-certs"
-	TestCert    = ""
-	TestKey     = ""
+	TestSocket    = "checker.sock"
+	TestCertDir   = "test-certs"
+	TestCert      = ""
+	TestKey       = ""
+	TestHTTPSPort = 0
 
 	TestHealthServer *healthServer
 )
+
+// freePort asks the OS for an available TCP port by binding to :0 and
+// immediately releasing it. The port is free for the next bind.
+func freePort() int {
+	l, err := net.Listen("tcp", ":0")
+	Expect(err).To(BeNil())
+	port := l.Addr().(*net.TCPAddr).Port
+	Expect(l.Close()).To(BeNil())
+	return port
+}
 
 type Client struct {
 	client  pb.SpyreHealthServiceClient
@@ -189,6 +201,8 @@ func createTestCertificates() error {
 			Organization: []string{"Test Org"},
 			CommonName:   "test-server",
 		},
+		DNSNames:              []string{"localhost"},
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(24 * time.Hour),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
@@ -246,5 +260,135 @@ func startServer() *healthServer {
 	err := s.StartSecureGRPCServer(TestSocket, TestCert, TestKey, TestCert)
 	Expect(err).To(BeNil())
 
+	// Start HTTPS override server with mTLS (same test cert acts as CA)
+	TestHTTPSPort = freePort()
+	err = s.StartHealthHTTPSServer(TestHTTPSPort, TestCert, TestKey, TestCert)
+	Expect(err).To(BeNil())
+
 	return s
 }
+
+var _ = Describe("applyOverrides", func() {
+	var s *healthServer
+
+	BeforeEach(func() {
+		vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
+		s = NewServer(&vitals)
+	})
+
+	type overrideEntry struct {
+		pciAddress string
+		state      pb.DEVICE_STATE
+	}
+
+	type expectedEntry struct {
+		pciAddress string
+		deviceType pb.DEVICE_TYPE
+		state      pb.DEVICE_STATE
+		source     string
+	}
+
+	DescribeTable("state override behaviour",
+		func(live []types.DeviceState, overrides []overrideEntry, expected []expectedEntry) {
+			for _, ov := range overrides {
+				s.overrides[ov.pciAddress] = types.DeviceState{
+					PciAddress: ov.pciAddress,
+					State:      ov.state,
+					Source:     "override",
+				}
+			}
+
+			result := s.applyOverrides(live)
+
+			Expect(result).To(HaveLen(len(expected)))
+			// Build a map for order-independent assertions.
+			byPCI := make(map[string]types.DeviceState, len(result))
+			for _, r := range result {
+				byPCI[r.PciAddress] = r
+			}
+			for _, exp := range expected {
+				r, ok := byPCI[exp.pciAddress]
+				Expect(ok).To(BeTrue(), "expected PCI %s in result", exp.pciAddress)
+				Expect(r.Type).To(Equal(exp.deviceType), "Type for %s", exp.pciAddress)
+				Expect(r.State).To(Equal(exp.state), "State for %s", exp.pciAddress)
+				Expect(r.Source).To(Equal(exp.source), "Source for %s", exp.pciAddress)
+			}
+		},
+
+		Entry("no overrides — live states returned unchanged",
+			[]types.DeviceState{
+				{PciAddress: "0000:1a:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+			},
+			[]overrideEntry{},
+			[]expectedEntry{
+				{"0000:1a:00.0", pb.DEVICE_TYPE_PF, pb.DEVICE_STATE_ONLINE, "lspci"},
+			},
+		),
+
+		Entry("override state differs — state and source replaced, live Type preserved",
+			[]types.DeviceState{
+				{PciAddress: "0000:1a:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+			},
+			[]overrideEntry{
+				{"0000:1a:00.0", pb.DEVICE_STATE_RUNNING_DIAGNOSTICS},
+			},
+			[]expectedEntry{
+				{"0000:1a:00.0", pb.DEVICE_TYPE_PF, pb.DEVICE_STATE_RUNNING_DIAGNOSTICS, "override"},
+			},
+		),
+
+		Entry("override state equals live state — entry left unchanged",
+			[]types.DeviceState{
+				{PciAddress: "0000:1a:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+			},
+			[]overrideEntry{
+				{"0000:1a:00.0", pb.DEVICE_STATE_ONLINE},
+			},
+			[]expectedEntry{
+				{"0000:1a:00.0", pb.DEVICE_TYPE_PF, pb.DEVICE_STATE_ONLINE, "lspci"},
+			},
+		),
+
+		Entry("VF live Type preserved when override carries wrong Type",
+			[]types.DeviceState{
+				{PciAddress: "0000:1a:00.1", Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+			},
+			[]overrideEntry{
+				{"0000:1a:00.1", pb.DEVICE_STATE_RUNNING_DIAGNOSTICS},
+			},
+			[]expectedEntry{
+				{"0000:1a:00.1", pb.DEVICE_TYPE_VF, pb.DEVICE_STATE_RUNNING_DIAGNOSTICS, "override"},
+			},
+		),
+
+		Entry("orphan override — device absent from live states is appended",
+			[]types.DeviceState{
+				{PciAddress: "0000:1a:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+			},
+			[]overrideEntry{
+				{"0000:ff:00.0", pb.DEVICE_STATE_RUNNING_DIAGNOSTICS},
+			},
+			[]expectedEntry{
+				{"0000:1a:00.0", pb.DEVICE_TYPE_PF, pb.DEVICE_STATE_ONLINE, "lspci"},
+				{"0000:ff:00.0", pb.DEVICE_TYPE_DEVICE_TYPE_UNSPECIFIED, pb.DEVICE_STATE_RUNNING_DIAGNOSTICS, "override"},
+			},
+		),
+
+		Entry("multiple devices — only differing entries replaced",
+			[]types.DeviceState{
+				{PciAddress: "0000:1a:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+				{PciAddress: "0000:1b:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+				{PciAddress: "0000:1c:00.0", Type: pb.DEVICE_TYPE_VF, State: pb.DEVICE_STATE_ONLINE, Source: "lspci"},
+			},
+			[]overrideEntry{
+				{"0000:1a:00.0", pb.DEVICE_STATE_RUNNING_DIAGNOSTICS}, // differs — replaced
+				{"0000:1b:00.0", pb.DEVICE_STATE_ONLINE},              // same — untouched
+			},
+			[]expectedEntry{
+				{"0000:1a:00.0", pb.DEVICE_TYPE_PF, pb.DEVICE_STATE_RUNNING_DIAGNOSTICS, "override"},
+				{"0000:1b:00.0", pb.DEVICE_TYPE_PF, pb.DEVICE_STATE_ONLINE, "lspci"},
+				{"0000:1c:00.0", pb.DEVICE_TYPE_VF, pb.DEVICE_STATE_ONLINE, "lspci"},
+			},
+		),
+	)
+})

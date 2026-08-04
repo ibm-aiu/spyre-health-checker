@@ -34,9 +34,11 @@ var (
 		"1h",
 		"Run all tests periodically on each node. Time set in interval format. Defaults to 1h",
 	)
-	healthPort  = flag.Int("health-port", 8080, "HTTP port for server health check endpoints")
-	metricsPort = flag.Int("metrics-port", 8081, "HTTP port for Prometheus compatible card metrics")
-	tlsCert     = flag.String(
+	healthPort   = flag.Int("health-port", 8080, "HTTP port for server health check endpoints (plain, for k8s probes)")
+	metricsPort  = flag.Int("metrics-port", 8081, "HTTP port for Prometheus compatible card metrics")
+	overridePort = flag.Int("override-port", 8443,
+		"HTTPS port for manual device state override endpoint (mTLS required, 0 to disable)")
+	tlsCert = flag.String(
 		"tls-cert",
 		getEnvOrDefault("SPYRE_TLS_CERT", "/etc/spyre-health-checker/certs/tls.crt"),
 		"Path to TLS certificate file (can be set via SPYRE_TLS_CERT env var)",
@@ -74,6 +76,13 @@ func main() {
 		logger.Fatal(err)
 	}
 
+	if *overridePort != 0 {
+		logger.Infof("Starting HTTPS override server with mTLS on port %d", *overridePort)
+		if err := s.StartHealthHTTPSServer(*overridePort, *tlsCert, *tlsKey, *tlsCA); err != nil {
+			logger.Fatalf("Error starting HTTPS override server: %v", err)
+		}
+	}
+
 	logger.Infof("Starting HTTP for Prometheus compatible card metrics on port %d", *metricsPort)
 	if err := s.StartMetricsHTTPServer(*metricsPort); err != nil {
 		logger.Fatal(err)
@@ -95,8 +104,8 @@ func main() {
 	if err := vitals.UpdateStates(); err != nil {
 		logger.Warnf("Error calling initial UpdateState(): %v", err)
 	} else {
-		utils.UpdateDeviceMetrics(vitals.GetVitalStates())
 		s.UpdateHealths(vitals.GetVitalStates())
+		utils.UpdateDeviceMetrics(s.AppliedStates())
 	}
 
 	periodicChecksTicker := time.NewTicker(timer)
@@ -107,6 +116,6 @@ func main() {
 			logger.Warnf("Error calling UpdateState(): %v", err)
 		}
 		s.UpdateHealths(vitals.GetVitalStates())
-		utils.UpdateDeviceMetrics(vitals.GetVitalStates())
+		utils.UpdateDeviceMetrics(s.AppliedStates())
 	}
 }
