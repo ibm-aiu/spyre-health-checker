@@ -5,18 +5,49 @@
  * +-------------------------------------------------------------------+
  */
 
-package healthcheck
+package reporter
 
 import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"strings"
 
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 )
+
+// PFVDID and VFVDID are the PCI vendor:device IDs for IBM Spyre PF and VF
+// devices. They are kept here for reference by tests.
+const (
+	PFVDID = "1014:06a7"
+	VFVDID = "1014:06a8"
+)
+
+// LSPCIReporter collects device states by running `lspci -vvvnn` and parsing
+// the output. It carries the lowest priority (PriorityLSPCI = 1).
+type LSPCIReporter struct{}
+
+func (r *LSPCIReporter) Name() string  { return "lspci" }
+func (r *LSPCIReporter) Priority() int { return types.PriorityLSPCI }
+
+// Collect executes lspci, parses the output, and stamps each entry with the
+// lspci source name and priority.
+func (r *LSPCIReporter) Collect() ([]types.DeviceState, error) {
+	out, err := exec.Command("sh", "-c", "lspci -vvvnn 2>/dev/null").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("lspci reporter: %w", err)
+	}
+	states := parseLSPCI(string(out))
+	stamp(states, r.Name(), r.Priority())
+	return states, nil
+}
+
+// ---------------------------------------------------------------------------
+// lspci output parser — private to this package
+// ---------------------------------------------------------------------------
 
 type bitValue struct {
 	Present bool // token is present or not
@@ -147,7 +178,6 @@ func parseDetails(stanza string, di *deviceInfo) {
 func parseDeviceStanza(stanza string) deviceInfo {
 	var di deviceInfo
 
-	// First line should be the header
 	firstLine := firstNonEmptyLine(stanza)
 	pci, vendev, rev, ok := parseHeader(firstLine)
 	if !ok || rev == "01" {
@@ -161,9 +191,7 @@ func parseDeviceStanza(stanza string) deviceInfo {
 	di.VenDevID = strings.ToLower(vendev)
 	di.Revision = strings.ToLower(rev)
 
-	// Parse body
 	parseDetails(stanza, &di)
-
 	return di
 }
 
@@ -176,50 +204,23 @@ func firstNonEmptyLine(s string) string {
 	return ""
 }
 
-// nolint:unused
-func debugoutput() {
-	sections := splitByBlankLines("<<replace with lspci output>>")
-	for i, sec := range sections {
-		di := parseDeviceStanza(sec)
-		if di == (deviceInfo{}) {
-			continue
-		}
-		fmt.Printf("=== Device %d ===\n", i+1)
-		fmt.Printf("PCI Address : %s\n", di.PCIAddress)
-		fmt.Printf("Vendor:Device: %s\n", di.VenDevID)
-		fmt.Printf("Revision    : %s\n", di.Revision)
-		fmt.Printf("PERR        : present=%v enabled=%v\n", di.PERR.Present, di.PERR.Enabled)
-		fmt.Printf("SERR        : present=%v enabled=%v\n", di.SERR.Present, di.SERR.Enabled)
-		fmt.Printf("TAbort      : present=%v enabled=%v\n", di.TAbort.Present, di.TAbort.Enabled)
-		fmt.Printf("MAbort      : present=%v enabled=%v\n", di.MAbort.Present, di.MAbort.Enabled)
-		fmt.Printf("D-State     : %s\n", di.DState)
-		fmt.Printf("DevSta Fatal: %v\n", di.DevStaFatal)
-		fmt.Printf("KernelDriver: %s\n", di.KernelDriver)
-		fmt.Println()
-	}
-}
-
 const (
-	PFVDID = "1014:06a7"
-	VFVDID = "1014:06a8"
+	pfVDID = "1014:06a7"
+	vfVDID = "1014:06a8"
 )
 
 func parseLSPCI(output string) []types.DeviceState {
 	states := make([]types.DeviceState, 0)
-	devices := splitByBlankLines(output)
-
-	for _, dev := range devices {
+	for _, dev := range splitByBlankLines(output) {
 		di := parseDeviceStanza(dev)
 		if di == (deviceInfo{}) {
 			continue
 		}
-
-		if di.VenDevID != PFVDID && di.VenDevID != VFVDID {
+		if di.VenDevID != pfVDID && di.VenDevID != vfVDID {
 			continue
 		}
 
 		var state pb.DEVICE_STATE
-
 		if di.Revision == "ff" {
 			state = pb.DEVICE_STATE_IN_ERROR
 		} else {
@@ -227,33 +228,20 @@ func parseLSPCI(output string) []types.DeviceState {
 		}
 
 		var devType pb.DEVICE_TYPE
-
 		switch di.VenDevID {
-		case PFVDID:
+		case pfVDID:
 			devType = pb.DEVICE_TYPE_PF
-		case VFVDID:
+		case vfVDID:
 			devType = pb.DEVICE_TYPE_VF
 		default:
 			devType = pb.DEVICE_TYPE_DEVICE_TYPE_UNSPECIFIED
 		}
 
-		// Check power state, return STATE_OFFLINE if power state is not D0
-		//		if di.DState == "D0" {
-		//			state = pb.DEVICE_STATE_ONLINE
-		//		} else {
-		//			state = pb.DEVICE_STATE_OFFLINE
-		//		}
-
-		// return IN_ERROR if SERR+ or Tabort+ or MAbortL or DevStFatal
-		//		if (di.PERR.Present && di.PERR.Enabled) ||
-		//			(di.SERR.Present && di.SERR.Enabled) ||
-		//			(di.TAbort.Present && di.TAbort.Enabled) ||
-		//			(di.MAbort.Present && di.MAbort.Enabled) ||
-		//			di.DevStaFatal {
-		//			state = pb.DEVICE_STATE_IN_ERROR
-		//		}
-
-		states = append(states, types.DeviceState{PciAddress: di.PCIAddress, Type: devType, State: state})
+		states = append(states, types.DeviceState{
+			PciAddress: di.PCIAddress,
+			Type:       devType,
+			State:      state,
+		})
 	}
 	return states
 }

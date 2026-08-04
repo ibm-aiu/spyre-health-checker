@@ -19,6 +19,7 @@ import (
 	"encoding/pem"
 	"io"
 	"math/big"
+	"net"
 	"os"
 	"sync"
 	"testing"
@@ -36,7 +37,6 @@ import (
 
 	healthcheck "github.com/ibm-aiu/spyre-health-checker/internal/healthcheck"
 	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
-	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -44,10 +44,11 @@ import (
 )
 
 var (
-	TestSocket  = "checker.sock"
-	TestCertDir = "test-certs"
-	TestCert    = ""
-	TestKey     = ""
+	TestSocket    = "checker.sock"
+	TestCertDir   = "test-certs"
+	TestCert      = ""
+	TestKey       = ""
+	TestHTTPSPort = 0
 
 	// UnknownCACert / UnknownCAKey are a self-signed cert/key pair issued by a
 	// different CA, used to verify that the server rejects untrusted clients.
@@ -208,6 +209,7 @@ func writeCertPairSigned(certPath, keyPath, cn string, serial int64,
 			CommonName:   cn,
 		},
 		DNSNames:              []string{cn},
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(24 * time.Hour),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -323,8 +325,8 @@ func startServer() Server {
 	defer logger.Sync() //nolint:errcheck
 	SetLogger(logger)
 
-	vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
-	s := NewServer(&vitals)
+	vitals := healthcheck.NewVitals(nil)
+	s := NewServer(vitals)
 
 	// Start secure server with mTLS
 	err := s.StartSecureGRPCServer(TestSocket, TestCert, TestKey, TestCert)

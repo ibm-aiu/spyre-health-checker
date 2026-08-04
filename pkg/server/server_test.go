@@ -134,10 +134,9 @@ var _ = Describe("Server", Ordered, func() {
 		It("concurrent access to vitals is thread-safe", func() {
 			// This test verifies that RegisterForSpyreDevicesEvents uses GetVitalStates()
 			// which is thread-safe, preventing data races when vitals are updated concurrently
-			vitals := &healthcheck.Vitals{
-				States: []types.DeviceState{
-					{PciAddress: "0000:01:00.0", State: spyre.DEVICE_STATE_ONLINE},
-				},
+			vitals := healthcheck.NewVitals(nil)
+			vitals.States = []types.DeviceState{
+				{PciAddress: "0000:01:00.0", State: spyre.DEVICE_STATE_ONLINE},
 			}
 			server := NewServer(vitals)
 
