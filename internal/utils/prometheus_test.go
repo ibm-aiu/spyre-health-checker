@@ -34,18 +34,9 @@ var _ = Describe("Prometheus metrics", func() {
 	}
 
 	BeforeEach(func() {
-		// Create a new registry for each test to avoid conflicts
+		// Create a new registry for each test to avoid conflicts.
+		// InitMetrics will create a fresh SpyreDeviceState and register it.
 		testRegistry = prometheus.NewRegistry()
-		// Reset the global SpyreDeviceState to ensure clean state
-		// Note: We create it fresh but don't register it yet - InitMetrics will do that
-		SpyreDeviceState = prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Subsystem: "spyre",
-				Name:      "device_state",
-				Help:      "Current state for each Spyre device.",
-			},
-			[]string{"node", "deviceid", "devicetype", "state"},
-		)
 	})
 
 	Describe("InitMetrics", func() {
@@ -72,6 +63,28 @@ var _ = Describe("Prometheus metrics", func() {
 			deviceMetric := findDeviceMetric(metrics)
 			Expect(deviceMetric).NotTo(BeNil(), "spyre_device_state metric should be registered")
 			Expect(deviceMetric.GetName()).To(Equal("spyre_device_state"))
+		})
+
+		It("should expose metric with name 'spyre_device_state' and no namespace prefix", func() {
+			// Regression test: a Namespace field containing a hyphen (e.g. "spyre-operator")
+			// causes Prometheus to reject the metric name at parse time. The gauge must be
+			// built from Subsystem + Name only, producing exactly "spyre_device_state".
+			InitMetrics(testRegistry)
+
+			SpyreDeviceState.With(prometheus.Labels{
+				"node":       "test",
+				"deviceid":   "0000:00:00.0",
+				"devicetype": "PF",
+				"state":      "ONLINE",
+			}).Set(1)
+
+			metrics, err := testRegistry.Gather()
+			Expect(err).NotTo(HaveOccurred())
+
+			deviceMetric := findDeviceMetric(metrics)
+			Expect(deviceMetric).NotTo(BeNil())
+			Expect(deviceMetric.GetName()).To(Equal("spyre_device_state"),
+				"metric name must be 'spyre_device_state' with no namespace prefix")
 		})
 
 		It("should handle double registration gracefully", func() {

@@ -16,24 +16,26 @@ import (
 )
 
 // One series per device-state tuple that exists in vitals.States.
-var (
-	SpyreDeviceState = prometheus.NewGaugeVec(
+var SpyreDeviceState *prometheus.GaugeVec
+
+func newDeviceStateGauge() *prometheus.GaugeVec {
+	return prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: Namespace,
 			Subsystem: "spyre",
 			Name:      "device_state",
 			Help:      "Current state for each Spyre device.",
 		},
 		[]string{"node", "deviceid", "devicetype", "state"},
 	)
-)
+}
 
 // InitMetrics registers metrics and built-in collectors on the provided Registerer.
 func InitMetrics(reg prometheus.Registerer) {
+	SpyreDeviceState = newDeviceStateGauge()
 
 	if err := reg.Register(SpyreDeviceState); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			// Reuse the one that’s already registered.
+			// Reuse the one that's already registered.
 			SpyreDeviceState = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			panic(err)
