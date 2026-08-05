@@ -10,6 +10,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
@@ -78,52 +79,46 @@ func NewServer(v *healthcheck.Vitals) *healthServer {
 	return &s
 }
 
-func (s *healthServer) StartSecureGRPCServer(socket string, tlsCertPath string, tlsKeyPath string) error {
-	var log *zap.SugaredLogger
+func (s *healthServer) StartSecureGRPCServer(socket, tlsCertPath, tlsKeyPath, caCertPath string) error {
+	log := getLogger()
 	if err := safeRemove(socket); err != nil {
-		log = getLogger()
 		log.Errorf("failed to remove present %s: %v", socket, err)
 	}
 
 	cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
 	if err != nil {
-		if log == nil {
-			log = getLogger()
-		}
 		return fmt.Errorf("failed to load TLS credentials: %w", err) // pragma: allowlist secret
 	}
+	caCert, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return fmt.Errorf("failed to read CA certification: %w", err)
+	}
+	certPool := x509.NewCertPool()
+	certPool.AppendCertsFromPEM(caCert)
 
 	lis, err := net.Listen("unix", socket)
 	if err != nil {
-		if log == nil {
-			log = getLogger()
-		}
 		log.Errorf("failed to listen: %v", err)
 		return err
 	}
 
-	opts := make([]grpc.ServerOption, 0, 1)
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
+		Certificates:       []tls.Certificate{cert},
+		MinVersion:         tls.VersionTLS12,
+		RootCAs:            certPool,
+		InsecureSkipVerify: false,
 	}
 
 	creds := credentials.NewTLS(tlsConfig)
-	opts = append(opts, grpc.Creds(creds))
+	opts := []grpc.ServerOption{grpc.Creds(creds)}
 
-	if log == nil {
-		log = getLogger()
-	}
 	log.Infof("mTLS enabled for gRPC server using cert: %s", tlsCertPath)
 
 	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterSpyreHealthServiceServer(grpcServer, s)
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
-			if log == nil {
-				log = getLogger()
-			}
-			logger.Errorf("failed to serve secure gRPC: %v", err)
+			log.Errorf("failed to serve secure gRPC: %v", err)
 		}
 	}()
 	s.socket = socket

@@ -243,7 +243,7 @@ func startServer() *healthServer {
 	s := NewServer(&vitals)
 
 	// Start secure server with mTLS
-	err := s.StartSecureGRPCServer(TestSocket, TestCert, TestKey)
+	err := s.StartSecureGRPCServer(TestSocket, TestCert, TestKey, TestCert)
 	Expect(err).To(BeNil())
 
 	return s

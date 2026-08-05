@@ -46,6 +46,11 @@ var (
 		getEnvOrDefault("SPYRE_TLS_KEY", "/etc/spyre-health-checker/certs/tls.key"),
 		"Path to TLS private key file (can be set via SPYRE_TLS_KEY env var)",
 	)
+	tlsCA = flag.String(
+		"tls-ca",
+		getEnvOrDefault("SPYRE_TLS_CA", "/etc/spyre-health-checker/certs/ca.crt"),
+		"Path to CA certificate file (can be set via SPYRE_TLS_CA env var)",
+	)
 )
 
 func main() {
@@ -60,7 +65,7 @@ func main() {
 
 	s := server.NewServer(&vitals)
 	logger.Infof("Starting secure gRPC server with mTLS")
-	if err := s.StartSecureGRPCServer(*socket, *tlsCert, *tlsKey); err != nil {
+	if err := s.StartSecureGRPCServer(*socket, *tlsCert, *tlsKey, *tlsCA); err != nil {
 		logger.Fatalf("Error starting secure gRPC Server: %v", err)
 	}
 
