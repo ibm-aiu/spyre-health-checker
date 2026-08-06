@@ -170,6 +170,10 @@ vendor: ## Run vendor
 build: vendor ## Build local binary
 	$(CGO_FLAGS) go build -mod vendor $(LDFLAGS) -race -o $(LOCALBIN)/spyre-health-checker ./cmd/health-checker
 
+.PHONY: gen-local-certs
+gen-local-certs: ## Generate self-signed CA, server, and client TLS certificates for local development
+	@bash hack/gen-local-certs.sh
+
 .PHONY: lint
 lint: golangci-lint vendor  ## Run golangci-lint against code.
 	$(GOLANGCI_LINT) run --config $(REPO_ROOT)/.golangci.yaml

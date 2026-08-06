@@ -193,50 +193,79 @@ make test
 
 It is often necessary to build and run the server by hand during development.
 
-To build:
+### Generate local TLS certificates
+
+The gRPC server requires TLS. A helper script generates a self-signed CA and a
+shared certificate/key pair (valid for both server and client) into a local
+`certs/` directory:
+
+```sh
+make gen-local-certs
+```
+
+This produces:
+
+| File | Purpose |
+|---|---|
+| `certs/ca.crt` | Self-signed CA certificate |
+| `certs/ca.key` | CA private key |
+| `certs/tls.crt` | Server/client certificate (signed by `ca.crt`) |
+| `certs/tls.key` | Server/client private key |
+
+> [!WARNING]
+> These certificates are for **local development only**. Never commit or deploy
+> them. The `certs/` directory is listed in `.gitignore`.
+
+### Build
 
 ```sh
 go build -o spyre-health-checker ./cmd/health-checker/main.go
 ```
 
-To run:
+### Run the server
 
 ```sh
-rm -f checker.sock # remove previously generated socket if exists
-./spyre-health-checker --timer 5s --socket checker.sock
+rm -f checker.sock   # remove previously generated socket if it exists
+PSEUDO_DEVICE_MODE=1 ./spyre-health-checker \
+  --socket   checker.sock \
+  --timer    5s \
+  --tls-cert certs/tls.crt \
+  --tls-key  certs/tls.key \
+  --tls-ca   certs/ca.crt
 ```
 
 Server output would look something like this:
 
 ```console
 I0826 21:32:03.349082   24618 main.go:36] loglevel: debug
-I0826 21:32:03.350211   24618 main.go:37] Starting gRPC server
-I0826 21:32:03.351596   24618 main.go:49] Starting timer for periodic checks
+I0826 21:32:03.350211   24618 main.go:50] Starting secure gRPC server with mTLS
+I0826 21:32:03.351596   24618 main.go:55] Starting timer for periodic checks
 I0826 21:32:08.352772   24618 healthcheck.go:9] Running lspci
 I0826 21:32:13.352538   24618 healthcheck.go:9] Running lspci
-I0826 21:32:18.352445   24618 healthcheck.go:9] Running lspci
-I0826 21:32:23.352272   24618 healthcheck.go:9] Running lspci
-I0826 21:32:28.351234   24618 healthcheck.go:9] Running lspci
-I0826 21:32:31.706218   24618 spyrehealthserver.go:49] [Server] Got a request
-I0826 21:32:33.351071   24618 healthcheck.go:9] Running lspci
 ```
 
 ### Test with a client
 
-To run a simple client in default mode, in another terminal, on a machine without Spyre cards:
+In a second terminal, run the client against the same socket and certificates.
+The server and client share the same `tls.crt` / `tls.key` pair because the
+server does not enforce client certificate verification.
 
 ```sh
-go run cmd/client/client.go --socket=$(pwd)/checker.sock
+go run cmd/client/client.go \
+  --socket   checker.sock \
+  --tls-cert certs/tls.crt \
+  --tls-key  certs/tls.key \
+  --tls-ca   certs/ca.crt
 ```
 
-All non-Spyre cards are ignored:
+On a machine without Spyre cards all non-Spyre devices are ignored:
 
 ```console
 2025/12/09 17:53:07 using socket checker.sock
 ```
 
-When running with the default pseudo devices (setting `export PSEUDO_DEVICE_MODE=1` before running the server), we would see the following client output:
-
+When running with pseudo devices (`PSEUDO_DEVICE_MODE=1`), the client output
+looks like this:
 
 ```console
 2025/12/09 17:56:26 using socket checker.sock
@@ -254,7 +283,7 @@ Server output for this case looks like this:
 
 ```console
 I1209 17:58:20.713943   86070 main.go:47] loglevel: debug
-I1209 17:58:20.714464   86070 main.go:50] Starting gRPC server
+I1209 17:58:20.714464   86070 main.go:50] Starting secure gRPC server with mTLS
 I1209 17:58:20.714786   86070 main.go:55] Starting timer for periodic checks
 I1209 17:58:28.644194   86070 server.go:55] register health stream
 I1209 17:58:28.644507   86070 server.go:90] update channel is not OK: rpc error: code = Canceled desc = context canceled

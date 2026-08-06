@@ -38,3 +38,6 @@ coverage-report.html
 
 # Temporary Files
 *.swp
+
+# Generated cert files from gen-local-certs.sh
+certs

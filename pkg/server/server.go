@@ -25,7 +25,10 @@ import (
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	"github.com/ibm-aiu/spyre-health-checker/pkg/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"go.uber.org/zap"
@@ -52,6 +55,15 @@ func getLogger() *zap.SugaredLogger {
 	return logger
 }
 
+// Server is the exported interface for the health gRPC server.
+type Server interface {
+	StartSecureGRPCServer(socket, tlsCertPath, tlsKeyPath, caCertPath string) error
+	StartHealthHTTPServer(port int) error
+	StartMetricsHTTPServer(port int) error
+	UpdateHealths(states []types.DeviceState)
+	Stop()
+}
+
 type healthServer struct {
 	mu sync.RWMutex
 	pb.UnimplementedSpyreHealthServiceServer
@@ -65,7 +77,7 @@ type healthServer struct {
 	ready             atomic.Bool
 }
 
-func NewServer(v *healthcheck.Vitals) *healthServer {
+func NewServer(v *healthcheck.Vitals) Server {
 	// Initialize state
 	err := v.UpdateStates()
 	if err != nil {
@@ -103,14 +115,18 @@ func (s *healthServer) StartSecureGRPCServer(socket, tlsCertPath, tlsKeyPath, ca
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		MinVersion:         tls.VersionTLS12,
-		RootCAs:            certPool,
-		InsecureSkipVerify: false,
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+		ClientCAs:    certPool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
 	}
 
 	creds := credentials.NewTLS(tlsConfig)
-	opts := []grpc.ServerOption{grpc.Creds(creds)}
+	opts := []grpc.ServerOption{
+		grpc.Creds(creds),
+		grpc.StreamInterceptor(authorizeStream),
+		grpc.UnaryInterceptor(authorizeUnary),
+	}
 
 	log.Infof("mTLS enabled for gRPC server using cert: %s", tlsCertPath)
 
@@ -378,4 +394,38 @@ func (s *healthServer) getPbDevices(states []types.DeviceState) []*pb.Device {
 		deviceList = append(deviceList, sd.Device())
 	}
 	return deviceList
+}
+
+// authorizeClientCert is the shared application-level policy check applied after
+// the TLS handshake succeeds. It returns Unauthenticated when the client cert
+// does not carry an Organisation field — a minimal example of post-handshake
+// certificate inspection that would be extended with real policy in production
+// (e.g. CN allow-list, SPIFFE SVID validation).
+func authorizeClientCert(ctx context.Context) error {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "no peer info in context")
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+		return status.Error(codes.Unauthenticated, "no client certificate presented")
+	}
+	if len(tlsInfo.State.PeerCertificates[0].Subject.Organization) == 0 {
+		return status.Error(codes.Unauthenticated, "client certificate has no Organisation")
+	}
+	return nil
+}
+
+func authorizeStream(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	if err := authorizeClientCert(ss.Context()); err != nil {
+		return err
+	}
+	return handler(srv, ss)
+}
+
+func authorizeUnary(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	if err := authorizeClientCert(ctx); err != nil {
+		return nil, err
+	}
+	return handler(ctx, req)
 }
