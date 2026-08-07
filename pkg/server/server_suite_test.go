@@ -9,6 +9,7 @@ package server
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -48,7 +49,17 @@ var (
 	TestCert    = ""
 	TestKey     = ""
 
-	TestHealthServer *healthServer
+	// UnknownCACert / UnknownCAKey are a self-signed cert/key pair issued by a
+	// different CA, used to verify that the server rejects untrusted clients.
+	UnknownCACert = ""
+	UnknownCAKey  = ""
+
+	// NoOrgCert / NoOrgKey are signed by the trusted CA but carry no Organisation
+	// field, triggering the application-level Unauthenticated check in the interceptor.
+	NoOrgCert = ""
+	NoOrgKey  = ""
+
+	TestHealthServer Server
 )
 
 type Client struct {
@@ -170,71 +181,144 @@ var _ = AfterSuite(func() {
 	_ = os.Unsetenv("SPYRE_TLS_CA")
 })
 
+// writeCertPair generates an ECDSA P-256 cert/key pair and writes them to
+// certPath / keyPath. When caSigner is non-nil the cert is signed by that CA;
+// otherwise it is self-signed. org is variadic: omit it to leave Organisation empty.
+// writeCertPair generates a self-signed ECDSA P-256 cert/key pair.
+// org is variadic: omit it to produce a cert with no Organisation field.
+func writeCertPair(certPath, keyPath, cn string,
+	serial int64, org ...string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+	return writeCertPairSigned(certPath, keyPath, cn, serial, nil, nil, org...)
+}
+
+// writeCertPairSigned generates an ECDSA P-256 cert/key pair signed by caCert/caKey
+// (or self-signed when both are nil). Returns the parsed cert and the new private key
+// so the caller can retain them for further signing.
+func writeCertPairSigned(certPath, keyPath, cn string, serial int64,
+	caCert *x509.Certificate, caKey *ecdsa.PrivateKey, org ...string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(serial),
+		Subject: pkix.Name{
+			Organization: org,
+			CommonName:   cn,
+		},
+		DNSNames:              []string{cn},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	// self-signed when no parent is provided
+	parent := &tmpl
+	signingKey := crypto.Signer(key)
+	if caCert != nil && caKey != nil {
+		parent = caCert
+		signingKey = caKey
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, parent, &key.PublicKey, signingKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certFile, err := os.Create(certPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = certFile.Close() }()
+	if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
+		return nil, nil, err
+	}
+
+	keyFile, err := os.Create(keyPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = keyFile.Close() }()
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}); err != nil {
+		return nil, nil, err
+	}
+
+	parsed, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, nil, err
+	}
+	return parsed, key, nil
+}
+
 func createTestCertificates() error {
-	// Create test certificate directory
 	if err := os.MkdirAll(TestCertDir, 0755); err != nil {
 		return err
 	}
 
-	// Generate private key
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return err
-	}
-
-	// Create certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization: []string{"Test Org"},
-			CommonName:   "test-server",
-		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		BasicConstraintsValid: true,
-	}
-
-	// Create self-signed certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
-	if err != nil {
-		return err
-	}
-
-	// Write certificate to file
+	// Primary CA — also used as the server cert (self-signed).
 	TestCert = TestCertDir + "/tls.crt"
-	certFile, err := os.Create(TestCert)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = certFile.Close() }()
-
-	if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
-		return err
-	}
-
-	// Write private key to file
 	TestKey = TestCertDir + "/tls.key"
-	keyFile, err := os.Create(TestKey)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = keyFile.Close() }()
-
-	privateKeyBytes, err := x509.MarshalECPrivateKey(privateKey)
+	caCert, caKey, err := writeCertPair(TestCert, TestKey, "test-server", 1, "Test Org")
 	if err != nil {
 		return err
 	}
 
-	if err := pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: privateKeyBytes}); err != nil {
+	// A second, independent CA/cert pair that the server does NOT trust.
+	UnknownCACert = TestCertDir + "/unknown-ca.crt"
+	UnknownCAKey = TestCertDir + "/unknown-ca.key"
+	if _, _, err := writeCertPair(UnknownCACert, UnknownCAKey, "unknown-ca", 2, "Test Org"); err != nil {
+		return err
+	}
+
+	// Signed by the trusted CA but carries no Organisation — TLS handshake
+	// passes (cert is trusted), but the stream interceptor returns Unauthenticated.
+	NoOrgCert = TestCertDir + "/no-org.crt"
+	NoOrgKey = TestCertDir + "/no-org.key"
+	if _, _, err := writeCertPairSigned(NoOrgCert, NoOrgKey, "test-server", 3, caCert, caKey /* no org */); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func startServer() *healthServer {
+// NewMTLSGrpcConn creates a gRPC client connection with full mTLS:
+//   - clientCertPath / clientKeyPath  – the client's own certificate and key
+//   - caCertPath                      – the CA whose cert the client uses to
+//     verify the server
+func NewMTLSGrpcConn(socket, clientCertPath, clientKeyPath, caCertPath string) (*grpc.ClientConn, error) {
+	cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	caCert, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, err
+	}
+	caPool := x509.NewCertPool()
+	caPool.AppendCertsFromPEM(caCert)
+
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caPool,
+		MinVersion:   tls.VersionTLS12,
+		// Unix sockets have no hostname; override the server-name check so the
+		// cert's CN is still verified against the pool without needing a SAN.
+		ServerName: "test-server",
+	}
+
+	return grpc.NewClient("unix:"+socket, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
+}
+
+func startServer() Server {
 	logger := zap.Must(zap.NewDevelopment()).Sugar()
 	defer logger.Sync() //nolint:errcheck
 	SetLogger(logger)

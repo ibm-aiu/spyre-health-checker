@@ -48,6 +48,11 @@ var (
 		getEnvOrDefault("SPYRE_TLS_CA", "/etc/spyre-health-checker/certs/ca.crt"),
 		"Path to TLS CA certificate file for server verification (can be set via SPYRE_TLS_CA env var)",
 	)
+	tlsServerName = flag.String(
+		"tls-server-name",
+		getEnvOrDefault("SPYRE_TLS_SERVER_NAME", "spyre-components"),
+		"Server name used to verify the server certificate CN/SAN (can be set via SPYRE_TLS_SERVER_NAME env var)",
+	)
 )
 
 func main() {
@@ -75,6 +80,7 @@ func main() {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
+		ServerName:   *tlsServerName,
 	}
 
 	caCert, err := os.ReadFile(*tlsCA)

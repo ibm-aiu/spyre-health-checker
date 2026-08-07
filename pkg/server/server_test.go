@@ -10,8 +10,10 @@ package server_test
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -21,7 +23,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	healthcheck "github.com/ibm-aiu/spyre-health-checker/internal/healthcheck"
 	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
@@ -483,6 +488,101 @@ var _ = Describe("Server", Ordered, func() {
 		})
 	})
 
+})
+
+var _ = Describe("mTLS", Ordered, func() {
+	const mtlsSocket = "mtls-test.sock"
+
+	var mtlsServer Server
+
+	BeforeAll(func() {
+		vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
+		mtlsServer = NewServer(&vitals)
+		// TestCert doubles as both the server cert and the trusted CA (self-signed).
+		err := mtlsServer.StartSecureGRPCServer(mtlsSocket, TestCert, TestKey, TestCert)
+		Expect(err).To(BeNil())
+	})
+
+	AfterAll(func() {
+		mtlsServer.Stop()
+	})
+
+	// entry holds the parameters that vary between table rows.
+	type entry struct {
+		connFactory func() (*grpc.ClientConn, error)
+		wantCode    codes.Code // codes.OK means the RPC must succeed
+	}
+
+	DescribeTable("handshake behaviour",
+		func(e entry) {
+			conn, err := e.connFactory()
+			Expect(err).To(BeNil()) // grpc.NewClient is lazy; dial errors appear on the first RPC
+			defer func() { _ = conn.Close() }()
+
+			client := spyre.NewSpyreHealthServiceClient(conn)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			stream, err := client.RegisterForSpyreDevicesEvents(ctx, &emptypb.Empty{})
+			// TLS handshake failures surface either on stream open or the first Recv.
+			if err == nil {
+				_, err = stream.Recv()
+			}
+
+			if e.wantCode == codes.OK {
+				Expect(err).To(BeNil())
+			} else {
+				Expect(status.Code(err)).To(Equal(e.wantCode))
+			}
+		},
+		Entry("accepts a client with a cert signed by the trusted CA",
+			entry{
+				wantCode: codes.OK,
+				connFactory: func() (*grpc.ClientConn, error) {
+					return NewMTLSGrpcConn(mtlsSocket, TestCert, TestKey, TestCert)
+				},
+			},
+		),
+		Entry("rejects a client that presents no certificate (TLS handshake fails)",
+			entry{
+				wantCode: codes.Unavailable,
+				connFactory: func() (*grpc.ClientConn, error) {
+					caCert, err := os.ReadFile(TestCert)
+					Expect(err).To(BeNil())
+					caPool := x509.NewCertPool()
+					caPool.AppendCertsFromPEM(caCert)
+					tlsCfg := &tls.Config{
+						RootCAs:    caPool,
+						ServerName: "test-server",
+						MinVersion: tls.VersionTLS12,
+						// No Certificates field – the client sends no cert.
+					}
+					return grpc.NewClient(
+						"unix:"+mtlsSocket,
+						grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
+					)
+				},
+			},
+		),
+		Entry("rejects a client signed by an untrusted CA (TLS handshake fails)",
+			entry{
+				wantCode: codes.Unavailable,
+				connFactory: func() (*grpc.ClientConn, error) {
+					return NewMTLSGrpcConn(mtlsSocket, UnknownCACert, UnknownCAKey, TestCert)
+				},
+			},
+		),
+		Entry("rejects a client whose cert has no Organisation (application-level check)",
+			entry{
+				wantCode: codes.Unauthenticated,
+				connFactory: func() (*grpc.ClientConn, error) {
+					// TLS handshake succeeds (cert is CA-trusted), but the stream
+					// interceptor rejects it: no Organisation field.
+					return NewMTLSGrpcConn(mtlsSocket, NoOrgCert, NoOrgKey, TestCert)
+				},
+			},
+		),
+	)
 })
 
 func getPseudoPfAddress(pciAddress string) string {
