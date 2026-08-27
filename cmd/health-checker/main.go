@@ -10,9 +10,11 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	healthcheck "github.com/ibm-aiu/spyre-health-checker/internal/healthcheck"
+	reporter "github.com/ibm-aiu/spyre-health-checker/internal/reporter"
 	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
 	server "github.com/ibm-aiu/spyre-health-checker/pkg/server"
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
@@ -27,6 +29,28 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
+// buildReporters creates a slice of reporters from a comma-separated string.
+func buildReporters(reporterNames string) []types.Reporter {
+	names := strings.Split(strings.TrimSpace(reporterNames), ",")
+	var reporters []types.Reporter
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		switch name {
+		case "lspci":
+			reporters = append(reporters, &reporter.LSPCIReporter{})
+		case "cardmgmt":
+			// CardmgmtReporter requires a CollectFn to be implemented
+			// for now we stub it
+			reporters = append(reporters, &reporter.CardmgmtReporter{})
+		}
+	}
+	if len(reporters) == 0 {
+		// Default to lspci if no valid reporters were found
+		reporters = append(reporters, &reporter.LSPCIReporter{})
+	}
+	return reporters
+}
+
 var (
 	socket = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
 	timer  = flag.String(
@@ -34,7 +58,12 @@ var (
 		"1h",
 		"Run all tests periodically on each node. Time set in interval format. Defaults to 1h",
 	)
-	healthPort  = flag.Int("health-port", 8080, "HTTP port for server health check endpoints")
+	enabledReporters = flag.String(
+		"enabled-reporters",
+		"lspci",
+		"Comma-separated list of enabled reporters (lspci, cardmgmt)",
+	)
+	healthPort  = flag.Int("health-port", 8080, "HTTP port for server health check endpoints (plain, for k8s probes)")
 	metricsPort = flag.Int("metrics-port", 8081, "HTTP port for Prometheus compatible card metrics")
 	tlsCert     = flag.String(
 		"tls-cert",
@@ -61,9 +90,11 @@ func main() {
 
 	server.SetLogger(logger)
 
-	vitals := healthcheck.Vitals{States: make([]types.DeviceState, 0)}
+	reporters := buildReporters(*enabledReporters)
+	logger.Infof("Enabled reporters: %v", *enabledReporters)
+	vitals := healthcheck.NewVitals(reporters)
 
-	s := server.NewServer(&vitals)
+	s := server.NewServer(vitals)
 	logger.Infof("Starting secure gRPC server with mTLS")
 	if err := s.StartSecureGRPCServer(*socket, *tlsCert, *tlsKey, *tlsCA); err != nil {
 		logger.Fatalf("Error starting secure gRPC Server: %v", err)
@@ -95,8 +126,9 @@ func main() {
 	if err := vitals.UpdateStates(); err != nil {
 		logger.Warnf("Error calling initial UpdateState(): %v", err)
 	} else {
-		utils.UpdateDeviceMetrics(vitals.GetVitalStates())
-		s.UpdateHealths(vitals.GetVitalStates())
+		states := vitals.GetVitalStates()
+		s.UpdateHealths(states)
+		utils.UpdateDeviceMetrics(states)
 	}
 
 	periodicChecksTicker := time.NewTicker(timer)
@@ -106,7 +138,8 @@ func main() {
 		if err != nil {
 			logger.Warnf("Error calling UpdateState(): %v", err)
 		}
-		s.UpdateHealths(vitals.GetVitalStates())
-		utils.UpdateDeviceMetrics(vitals.GetVitalStates())
+		states := vitals.GetVitalStates()
+		s.UpdateHealths(states)
+		utils.UpdateDeviceMetrics(states)
 	}
 }

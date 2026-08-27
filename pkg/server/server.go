@@ -143,6 +143,21 @@ func (s *healthServer) StartSecureGRPCServer(socket, tlsCertPath, tlsKeyPath, ca
 	return nil
 }
 
+// handleReadyz is the /readyz handler shared by both HTTP and HTTPS health servers.
+func (s *healthServer) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+	if s.ready.Load() {
+		w.WriteHeader(http.StatusOK)
+		if _, err := fmt.Fprintf(w, "Ready"); err != nil {
+			getLogger().Warnf("failed to write readyz response: %v", err)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if _, err := fmt.Fprintf(w, "Not Ready"); err != nil {
+		getLogger().Warnf("failed to write readyz response: %v", err)
+	}
+}
+
 // StartHealthHTTPServer starts the HTTP server for server health check endpoints
 func (s *healthServer) StartHealthHTTPServer(port int) error {
 	mux := http.NewServeMux()
@@ -156,19 +171,7 @@ func (s *healthServer) StartHealthHTTPServer(port int) error {
 	})
 
 	// Readiness probe - returns 200 only if gRPC server is ready
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		if s.ready.Load() {
-			w.WriteHeader(http.StatusOK)
-			if _, err := fmt.Fprintf(w, "Ready"); err != nil {
-				getLogger().Warnf("failed to write readyz response: %v", err)
-			}
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			if _, err := fmt.Fprintf(w, "Not Ready"); err != nil {
-				getLogger().Warnf("failed to write readyz response: %v", err)
-			}
-		}
-	})
+	mux.HandleFunc("/readyz", s.handleReadyz)
 
 	s.healthHTTPServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
