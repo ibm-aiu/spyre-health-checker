@@ -54,7 +54,8 @@ const (
 )
 
 var (
-	PseudoRuntimeArch = runtime.GOARCH
+	PseudoRuntimeArch  = runtime.GOARCH
+	PseudoHealthSource = "lspci"
 )
 
 func IsPseudoDeviceMode() bool {
@@ -71,6 +72,8 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 			PciAddress: card,
 			Type:       pb.DEVICE_TYPE_PF,
 			State:      pb.DEVICE_STATE_ONLINE,
+			Source:     PseudoHealthSource,
+			Priority:   types.PriorityLSPCI,
 		})
 		if PseudoRuntimeArch != sriovVFArch {
 			vf1 := getPseudoVfAddress(card, 1)
@@ -79,11 +82,15 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: vf1,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_ONLINE,
+				Source:     PseudoHealthSource,
+				Priority:   types.PriorityLSPCI,
 			})
 			healths = append(healths, types.DeviceState{
 				PciAddress: vf2,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_ONLINE,
+				Source:     PseudoHealthSource,
+				Priority:   types.PriorityLSPCI,
 			})
 		}
 	}
@@ -92,6 +99,8 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 			PciAddress: card,
 			Type:       pb.DEVICE_TYPE_PF,
 			State:      pb.DEVICE_STATE_IN_ERROR,
+			Source:     PseudoHealthSource,
+			Priority:   types.PriorityLSPCI,
 		})
 		if PseudoRuntimeArch != sriovVFArch {
 			vf1 := getPseudoVfAddress(card, 1)
@@ -100,11 +109,15 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: vf1,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_IN_ERROR,
+				Source:     PseudoHealthSource,
+				Priority:   types.PriorityLSPCI,
 			})
 			healths = append(healths, types.DeviceState{
 				PciAddress: vf2,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_IN_ERROR,
+				Source:     PseudoHealthSource,
+				Priority:   types.PriorityLSPCI,
 			})
 		}
 	}
@@ -114,6 +127,8 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: card,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_ONLINE,
+				Source:     PseudoHealthSource,
+				Priority:   types.PriorityLSPCI,
 			})
 		}
 		for _, card := range BadIsolatedVFCards {
@@ -121,6 +136,8 @@ func GetPseudoDeviceHealths() (healths []types.DeviceState) {
 				PciAddress: card,
 				Type:       pb.DEVICE_TYPE_VF,
 				State:      pb.DEVICE_STATE_IN_ERROR,
+				Source:     PseudoHealthSource,
+				Priority:   types.PriorityLSPCI,
 			})
 		}
 	}

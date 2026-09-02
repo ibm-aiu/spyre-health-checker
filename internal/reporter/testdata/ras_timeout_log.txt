@@ -1,0 +1,26 @@
+Running main() from /gtest_main.cc
+
+[32m INFO 03.08.2026 14:24:30.832877 [         software_counters.cpp: 103] registered generation_count new size = 6[0m
+[32m INFO 03.08.2026 14:24:30.832883 [                monitoring.cpp:  43] XXX statistics enabled in metrics collection[0m
+[33m WARN 03.08.2026 14:24:30.832924 [                monitoring.cpp:  89] Non-existent path. Sentientmap file cannot be created and metrics collection was disabled.[0m
+[32m INFO 03.08.2026 14:24:30.833584 [              pf_interface.cpp: 493] Disparity debug monitor is active[0m
+[32m INFO 03.08.2026 14:24:30.833651 [              pf_interface.cpp: 518] PF interface ucount=2[0m
+[32m INFO 03.08.2026 14:24:30.833658 [              pf_interface.cpp: 192] Reusing PfInterface for SEN:VFIO:TYPE1:0000:1a:00.0, usage = 2[0m
+[32m INFO 03.08.2026 14:24:30.833667 [       initialize_firmware.cpp:1196] Initialize firmware begin[0m
+[32m INFO 03.08.2026 14:24:30.833674 [       initialize_firmware.cpp:  65] Boot sequence initialization begin[0m
+[32m INFO 03.08.2026 14:24:30.833892 [       initialize_firmware.cpp:  81] Boot sequence init found, executing job[0m
+[31m ERRR 03.08.2026 14:25:26.392028 [  response_block_interface.cpp: 181] Exceeded max iterations waiting for a response block.  Executing LX logout[0m
+[32m INFO 03.08.2026 14:25:26.392275 [              pf_interface.cpp: 530] PF interface ucount=1[0m
+unknown file: Failure
+C++ exception with description "{"QueueHead":0,"QueueLen":XXXXX,"action":"reset","category":"hardware","code":"0xxx","collect_flightlogs":true,"description":"A response from the hardware exceeded the expected timeout while executing a control block.","message":"Exceeded max iterations waiting for a response block","name":"RAS::CBRB::ResponseTimeout","severity":"ERROR","step":"Monitor card for reoccurrences after reset","type":"runtime_error"}" thrown in the test body.
+
+[  FAILED  ] XXXXX.Open (xxxxx ms)
+[----------] 1 test from XXXXX (xxxxx ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (xxxxx ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] XXXXX.Open
+
+ 1 FAILED TEST

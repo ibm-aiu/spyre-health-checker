@@ -19,9 +19,22 @@ import (
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 )
 
+const (
+	TestPCIAddress  = "0000:1a:00.0"
+	TestPCIAddress2 = "0000:1b:00.0"
+	LsPCISource     = "lspci"
+)
+
 var _ = Describe("Prometheus metrics", func() {
 
 	var testRegistry *prometheus.Registry
+	var labels = prometheus.Labels{
+		"node":       "test",
+		"deviceid":   "0000:00:00.0",
+		"devicetype": "PF",
+		"state":      "ONLINE",
+		"source":     LsPCISource,
+	}
 
 	// Helper function to find the device metric in the registry
 	findDeviceMetric := func(metrics []*dto.MetricFamily) *dto.MetricFamily {
@@ -45,12 +58,7 @@ var _ = Describe("Prometheus metrics", func() {
 
 			// Set a dummy value so the metric appears in Gather()
 			// Prometheus metrics don't show up in Gather() until they have at least one data point
-			SpyreDeviceState.With(prometheus.Labels{
-				"node":       "test",
-				"deviceid":   "0000:00:00.0",
-				"devicetype": "PF",
-				"state":      "ONLINE",
-			}).Set(1)
+			SpyreDeviceState.With(labels).Set(1)
 
 			// Verify the metric is registered
 			metrics, err := testRegistry.Gather()
@@ -71,12 +79,7 @@ var _ = Describe("Prometheus metrics", func() {
 			// built from Subsystem + Name only, producing exactly "spyre_device_state".
 			InitMetrics(testRegistry)
 
-			SpyreDeviceState.With(prometheus.Labels{
-				"node":       "test",
-				"deviceid":   "0000:00:00.0",
-				"devicetype": "PF",
-				"state":      "ONLINE",
-			}).Set(1)
+			SpyreDeviceState.With(labels).Set(1)
 
 			metrics, err := testRegistry.Gather()
 			Expect(err).NotTo(HaveOccurred())
@@ -129,9 +132,10 @@ var _ = Describe("Prometheus metrics", func() {
 		It("should update metrics for a single device", func() {
 			states := []types.DeviceState{
 				{
-					PciAddress: "0000:1a:00.0",
+					PciAddress: TestPCIAddress,
 					Type:       pb.DEVICE_TYPE_PF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 			}
 
@@ -156,27 +160,31 @@ var _ = Describe("Prometheus metrics", func() {
 			}
 
 			Expect(labelMap["node"]).To(Equal("test-node"))
-			Expect(labelMap["deviceid"]).To(Equal("0000:1a:00.0"))
+			Expect(labelMap["deviceid"]).To(Equal(TestPCIAddress))
 			Expect(labelMap["devicetype"]).To(Equal("PF"))
 			Expect(labelMap["state"]).To(Equal("ONLINE"))
+			Expect(labelMap["source"]).To(Equal(LsPCISource))
 		})
 
 		It("should update metrics for multiple devices", func() {
 			states := []types.DeviceState{
 				{
-					PciAddress: "0000:1a:00.0",
+					PciAddress: TestPCIAddress,
 					Type:       pb.DEVICE_TYPE_PF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 				{
 					PciAddress: "0000:1a:00.1",
 					Type:       pb.DEVICE_TYPE_VF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 				{
-					PciAddress: "0000:1b:00.0",
+					PciAddress: TestPCIAddress2,
 					Type:       pb.DEVICE_TYPE_PF,
 					State:      pb.DEVICE_STATE_IN_ERROR,
+					Source:     "override",
 				},
 			}
 
@@ -194,14 +202,16 @@ var _ = Describe("Prometheus metrics", func() {
 			// First update with 2 devices
 			states1 := []types.DeviceState{
 				{
-					PciAddress: "0000:1a:00.0",
+					PciAddress: TestPCIAddress,
 					Type:       pb.DEVICE_TYPE_PF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 				{
-					PciAddress: "0000:1b:00.0",
+					PciAddress: TestPCIAddress2,
 					Type:       pb.DEVICE_TYPE_PF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 			}
 			UpdateDeviceMetrics(states1)
@@ -209,9 +219,10 @@ var _ = Describe("Prometheus metrics", func() {
 			// Second update with only 1 device
 			states2 := []types.DeviceState{
 				{
-					PciAddress: "0000:1a:00.0",
+					PciAddress: TestPCIAddress,
 					Type:       pb.DEVICE_TYPE_PF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 			}
 			UpdateDeviceMetrics(states2)
@@ -243,19 +254,22 @@ var _ = Describe("Prometheus metrics", func() {
 		It("should handle all device types correctly", func() {
 			states := []types.DeviceState{
 				{
-					PciAddress: "0000:1a:00.0",
+					PciAddress: TestPCIAddress,
 					Type:       pb.DEVICE_TYPE_PF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 				{
 					PciAddress: "0000:1a:00.1",
 					Type:       pb.DEVICE_TYPE_VF,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     LsPCISource,
 				},
 				{
 					PciAddress: "0000:1a:00.2",
 					Type:       pb.DEVICE_TYPE_DEVICE_TYPE_UNSPECIFIED,
 					State:      pb.DEVICE_STATE_ONLINE,
+					Source:     "cardmgmt",
 				},
 			}
 
@@ -285,14 +299,14 @@ var _ = Describe("Prometheus metrics", func() {
 
 		It("should handle all device states correctly", func() {
 			states := []types.DeviceState{
-				{PciAddress: "0000:1a:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_OFFLINE},
-				{PciAddress: "0000:1b:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_BOOTING},
-				{PciAddress: "0000:1c:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_SHUTTING_DOWN},
-				{PciAddress: "0000:1d:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE},
-				{PciAddress: "0000:1e:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_RUNNING_DIAGNOSTICS},
-				{PciAddress: "0000:1f:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_IN_ERROR},
-				{PciAddress: "0000:20:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_REMOVED},
-				{PciAddress: "0000:21:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED},
+				{PciAddress: "0000:1a:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_OFFLINE, Source: LsPCISource},
+				{PciAddress: "0000:1b:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_BOOTING, Source: LsPCISource},
+				{PciAddress: "0000:1c:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_SHUTTING_DOWN, Source: LsPCISource},
+				{PciAddress: "0000:1d:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource},
+				{PciAddress: "0000:1e:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_RUNNING_DIAGNOSTICS, Source: LsPCISource}, // nolint:lll
+				{PciAddress: "0000:1f:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_IN_ERROR, Source: "override"},
+				{PciAddress: "0000:20:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_REMOVED, Source: LsPCISource},
+				{PciAddress: "0000:21:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED, Source: LsPCISource}, // nolint:lll
 			}
 
 			UpdateDeviceMetrics(states)

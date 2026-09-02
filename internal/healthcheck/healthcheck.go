@@ -8,36 +8,39 @@
 package healthcheck
 
 import (
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 
+	reporter "github.com/ibm-aiu/spyre-health-checker/internal/reporter"
 	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 )
 
 type Vitals struct {
-	States []types.DeviceState
-	mu     sync.RWMutex
+	States    []types.DeviceState
+	mu        sync.RWMutex
+	reporters []types.Reporter
+}
+
+// NewVitals creates a Vitals instance with the given reporters.
+// If reporters is empty or nil, defaults to LSPCIReporter.
+func NewVitals(reporters []types.Reporter) *Vitals {
+	if len(reporters) == 0 {
+		reporters = []types.Reporter{&reporter.LSPCIReporter{}}
+	}
+	return &Vitals{
+		States:    make([]types.DeviceState, 0),
+		reporters: reporters,
+	}
 }
 
 func (v *Vitals) GetVitalStates() []types.DeviceState {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v.States
-}
-
-// runLSPCI executes the `lspci` command and stores the output.
-func (v *Vitals) runLSPCI() ([]types.DeviceState, error) {
-	out, err := exec.Command("sh", "-c", "lspci -vvvnn 2>/dev/null").CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run lspci: %v", err)
-	}
-	return parseLSPCI(string(out)), nil
 }
 
 // fileIsAccessible returns true if os.Stat(path) succeeds within 5 seconds.
@@ -64,8 +67,8 @@ func fileIsAccessible(path string) bool {
 	}
 }
 
-// updateDriverStatus() will set the state of a specific card to DEVICE_STATE_IN_ERROR
-// if it is not accessible for any reason, or if there is a timeout trying verify access.
+// updateDriverStatus sets the state of a device to DEVICE_STATE_IN_ERROR if
+// its driver path is not accessible within the timeout.
 func updateDriverStatus(states []types.DeviceState) {
 	for i := range states {
 		driverPath := filepath.Join("/sys/bus/pci/devices", states[i].PciAddress, "driver")
@@ -75,7 +78,8 @@ func updateDriverStatus(states []types.DeviceState) {
 	}
 }
 
-// UpdateStates updates device states.
+// UpdateStates refreshes device states using the configured reporters
+// or the pseudo-device list (test/emulation mode).
 func (v *Vitals) UpdateStates() error {
 	var states []types.DeviceState
 	if utils.IsPseudoDeviceMode() {
@@ -83,7 +87,7 @@ func (v *Vitals) UpdateStates() error {
 		states = utils.GetPseudoDeviceHealths()
 	} else {
 		var err error
-		states, err = v.runLSPCI()
+		states, err = reporter.Merge(v.reporters)
 		if err != nil {
 			return err
 		}
