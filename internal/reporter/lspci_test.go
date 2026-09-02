@@ -23,14 +23,14 @@ var sampleLSPCI string
 
 var (
 	errorCards = []string{
-		"0000:1b:00.0",
+		TestPCIAddress2,
 	}
 	unsupportedCards = []string{
-		"0000:1a:00.0",
-		"0000:1c:00.0",
+		TestPCIAddress,
+		TestPCIAddress3,
 	}
 	vfCards = []string{
-		"0000:1d:00.0",
+		TestPCIAddress4,
 	}
 )
 
@@ -62,7 +62,7 @@ var _ = Describe("LSPCIReporter", func() {
 		states := parseLSPCI(sampleLSPCI)
 		stamp(states, r.Name(), r.Priority())
 		for _, s := range states {
-			Expect(s.Source).To(Equal("lspci"))
+			Expect(s.Source).To(Equal(LsPCISource))
 			Expect(s.Priority).To(Equal(types.PriorityLSPCI))
 		}
 	})
@@ -71,34 +71,36 @@ var _ = Describe("LSPCIReporter", func() {
 var _ = Describe("Merge", func() {
 	It("higher-priority reporter wins on conflict (online→error downgrade)", func() {
 		lspciState := types.DeviceState{
-			PciAddress: "0000:1a:00.0",
+			PciAddress: TestPCIAddress,
 			State:      pb.DEVICE_STATE_ONLINE,
-			Source:     "lspci",
+			Source:     LsPCISource,
 			Priority:   types.PriorityLSPCI,
 		}
 		cardMgmtState := types.DeviceState{
-			PciAddress: "0000:1a:00.0",
+			PciAddress: TestPCIAddress,
 			State:      pb.DEVICE_STATE_IN_ERROR,
-			Source:     "cardmgmt",
+			Source:     CardmgmtSource,
 			Priority:   types.PriorityCardmgmt,
 		}
 
-		low := &stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{lspciState}}
-		high := &stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{cardMgmtState}}
+		low := &stubReporter{name: LsPCISource,
+			priority: types.PriorityLSPCI, states: []types.DeviceState{lspciState}}
+		high := &stubReporter{name: CardmgmtSource,
+			priority: types.PriorityCardmgmt, states: []types.DeviceState{cardMgmtState}}
 
 		result, err := Merge([]types.Reporter{low, high})
 		Expect(err).To(BeNil())
 		Expect(result).To(HaveLen(1))
-		Expect(result[0].Source).To(Equal("cardmgmt"))
+		Expect(result[0].Source).To(Equal(CardmgmtSource))
 		Expect(result[0].State).To(Equal(pb.DEVICE_STATE_IN_ERROR))
 	})
 
 	It("non-conflicting devices from different reporters are all present", func() {
-		a := types.DeviceState{PciAddress: "0000:1a:00.0", Source: "lspci", Priority: types.PriorityLSPCI}
-		b := types.DeviceState{PciAddress: "0000:1b:00.0", Source: "cardmgmt", Priority: types.PriorityCardmgmt}
+		a := types.DeviceState{PciAddress: TestPCIAddress, Source: LsPCISource, Priority: types.PriorityLSPCI}
+		b := types.DeviceState{PciAddress: TestPCIAddress2, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}
 
-		r1 := &stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{a}}
-		r2 := &stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{b}}
+		r1 := &stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{a}}
+		r2 := &stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{b}}
 
 		result, err := Merge([]types.Reporter{r1, r2})
 		Expect(err).To(BeNil())

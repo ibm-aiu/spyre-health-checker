@@ -89,9 +89,9 @@ var _ = DescribeTable("Merge",
 	Entry("single reporter with states → all states returned",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "lspci", Priority: types.PriorityLSPCI},
-					{PciAddress: "0000:1b:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					{PciAddress: TestPCIAddress2, State: pb.DEVICE_STATE_IN_ERROR, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
 			},
 			wantLen: 2,
@@ -101,15 +101,15 @@ var _ = DescribeTable("Merge",
 	Entry("higher-priority reporter cannot promote error→online",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
-				&stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "cardmgmt", Priority: types.PriorityCardmgmt},
+				&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
 				}},
 			},
 			wantLen:    1,
-			wantSource: "lspci",
+			wantSource: LsPCISource,
 			wantState:  pb.DEVICE_STATE_IN_ERROR,
 		}),
 
@@ -117,15 +117,15 @@ var _ = DescribeTable("Merge",
 	Entry("higher-priority reporter can downgrade online→error",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
-				&stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "cardmgmt", Priority: types.PriorityCardmgmt}, // nolint:lll
+				&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
 				}},
 			},
 			wantLen:    1,
-			wantSource: "cardmgmt",
+			wantSource: CardmgmtSource,
 			wantState:  pb.DEVICE_STATE_IN_ERROR,
 		}),
 
@@ -133,15 +133,15 @@ var _ = DescribeTable("Merge",
 	Entry("higher-priority reporter overrides online→online",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
-				&stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "cardmgmt", Priority: types.PriorityCardmgmt}, // nolint:lll
+				&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
 				}},
 			},
 			wantLen:    1,
-			wantSource: "cardmgmt",
+			wantSource: CardmgmtSource,
 			wantState:  pb.DEVICE_STATE_ONLINE,
 		}),
 
@@ -149,42 +149,42 @@ var _ = DescribeTable("Merge",
 	Entry("higher-priority reporter overrides error→error",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
-				&stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "cardmgmt", Priority: types.PriorityCardmgmt}, // nolint:lll
+				&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
 				}},
 			},
 			wantLen:    1,
-			wantSource: "cardmgmt",
+			wantSource: CardmgmtSource,
 			wantState:  pb.DEVICE_STATE_IN_ERROR,
 		}),
 
 	// Equal priority: first encountered is always kept regardless of state.
-	Entry("equal-priority: first encountered is always kept",
+	Entry("equal-priority: first (cardmgmt) encountered is always kept",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "first", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "first", Priority: types.PriorityCardmgmt},
+				&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
 				}},
 				&stubReporter{name: "second", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "second", Priority: types.PriorityCardmgmt},
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: "second", Priority: types.PriorityCardmgmt},
 				}},
 			},
 			wantLen:    1,
-			wantSource: "first",
+			wantSource: CardmgmtSource,
 			wantState:  pb.DEVICE_STATE_IN_ERROR,
 		}),
 
 	Entry("non-conflicting addresses from different reporters are all present",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
-				&stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1b:00.0", Source: "cardmgmt", Priority: types.PriorityCardmgmt},
+				&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress2, Source: CardmgmtSource, Priority: types.PriorityCardmgmt},
 				}},
 			},
 			wantLen: 2,
@@ -194,8 +194,8 @@ var _ = DescribeTable("Merge",
 		mergeTC{
 			reporters: []types.Reporter{
 				&errReporter{name: "bad1"},
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
 				&errReporter{name: "bad2"},
 			},
@@ -219,25 +219,25 @@ var _ = DescribeTable("Merge",
 	Entry("all four transition cases across multiple devices",
 		mergeTC{
 			reporters: []types.Reporter{
-				&stubReporter{name: "lspci", priority: types.PriorityLSPCI, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "lspci", Priority: types.PriorityLSPCI},
-					{PciAddress: "0000:1b:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "lspci", Priority: types.PriorityLSPCI},
-					{PciAddress: "0000:1c:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "lspci", Priority: types.PriorityLSPCI},
-					{PciAddress: "0000:1d:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "lspci", Priority: types.PriorityLSPCI},
+				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					{PciAddress: TestPCIAddress2, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					{PciAddress: TestPCIAddress3, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					{PciAddress: TestPCIAddress4, State: pb.DEVICE_STATE_IN_ERROR, Source: LsPCISource, Priority: types.PriorityLSPCI},
 				}},
-				&stubReporter{name: "cardmgmt", priority: types.PriorityCardmgmt, states: []types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "cardmgmt", Priority: types.PriorityCardmgmt},
-					{PciAddress: "0000:1b:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "cardmgmt", Priority: types.PriorityCardmgmt}, // nolint:lll
-					{PciAddress: "0000:1c:00.0", State: pb.DEVICE_STATE_ONLINE, Source: "cardmgmt", Priority: types.PriorityCardmgmt},
-					{PciAddress: "0000:1d:00.0", State: pb.DEVICE_STATE_IN_ERROR, Source: "cardmgmt", Priority: types.PriorityCardmgmt}, // nolint:lll
+				&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+					{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: CardmgmtSource, Priority: types.PriorityCardmgmt},    // nolint:lll
+					{PciAddress: TestPCIAddress2, State: pb.DEVICE_STATE_IN_ERROR, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
+					{PciAddress: TestPCIAddress3, State: pb.DEVICE_STATE_ONLINE, Source: CardmgmtSource, Priority: types.PriorityCardmgmt},   // nolint:lll
+					{PciAddress: TestPCIAddress4, State: pb.DEVICE_STATE_IN_ERROR, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
 				}},
 			},
 			wantLen: 4,
 			wantByAddr: map[string]types.DeviceState{
-				"0000:1a:00.0": {Source: "lspci", State: pb.DEVICE_STATE_IN_ERROR},
-				"0000:1b:00.0": {Source: "cardmgmt", State: pb.DEVICE_STATE_IN_ERROR},
-				"0000:1c:00.0": {Source: "cardmgmt", State: pb.DEVICE_STATE_ONLINE},
-				"0000:1d:00.0": {Source: "cardmgmt", State: pb.DEVICE_STATE_IN_ERROR},
+				TestPCIAddress:  {Source: LsPCISource, State: pb.DEVICE_STATE_IN_ERROR},
+				TestPCIAddress2: {Source: CardmgmtSource, State: pb.DEVICE_STATE_IN_ERROR},
+				TestPCIAddress3: {Source: CardmgmtSource, State: pb.DEVICE_STATE_ONLINE},
+				TestPCIAddress4: {Source: CardmgmtSource, State: pb.DEVICE_STATE_IN_ERROR},
 			},
 		}),
 )
