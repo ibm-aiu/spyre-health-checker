@@ -14,7 +14,6 @@ import (
 	"time"
 
 	reporter "github.com/ibm-aiu/spyre-health-checker/internal/reporter"
-	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 )
@@ -69,8 +68,13 @@ func fileIsAccessible(path string) bool {
 
 // updateDriverStatus sets the state of a device to DEVICE_STATE_IN_ERROR if
 // its driver path is not accessible within the timeout.
+// States produced by the pseudo reporter are skipped — they have no real
+// sysfs entries and their health is already encoded in the static list.
 func updateDriverStatus(states []types.DeviceState) {
 	for i := range states {
+		if states[i].Source == "pseudo" {
+			continue
+		}
 		driverPath := filepath.Join("/sys/bus/pci/devices", states[i].PciAddress, "driver")
 		if !fileIsAccessible(driverPath) {
 			states[i].State = pb.DEVICE_STATE_IN_ERROR
@@ -78,21 +82,13 @@ func updateDriverStatus(states []types.DeviceState) {
 	}
 }
 
-// UpdateStates refreshes device states using the configured reporters
-// or the pseudo-device list (test/emulation mode).
+// UpdateStates refreshes device states using the configured reporters.
 func (v *Vitals) UpdateStates() error {
-	var states []types.DeviceState
-	if utils.IsPseudoDeviceMode() {
-		// do not check for drivers in pseudo case
-		states = utils.GetPseudoDeviceHealths()
-	} else {
-		var err error
-		states, err = reporter.Merge(v.reporters)
-		if err != nil {
-			return err
-		}
-		updateDriverStatus(states)
+	states, err := reporter.Merge(v.reporters)
+	if err != nil {
+		return err
 	}
+	updateDriverStatus(states)
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.States = states
