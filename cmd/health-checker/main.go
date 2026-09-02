@@ -37,7 +37,16 @@ func getEnvOrDefault(key, defaultValue string) string {
 // buildReporters creates a slice of reporters from a comma-separated string.
 // rasReporter is always appended unconditionally — an empty RASReporter
 // contributes nothing to Merge() and requires no flag to enable.
+//
+// When PSEUDO_DEVICE_MODE=1 the hardware reporters (lspci, cardmgmt) are
+// replaced by PseudoReporter so that the same reporter framework and merge
+// logic is used in both real and pseudo modes. RASReporter is still included
+// so that RAS errors detected by the pod watcher override pseudo-healthy states
+// exactly as they would in production.
 func buildReporters(reporterNames string, rasReporter *reporter.RASReporter) []types.Reporter {
+	if utils.IsPseudoDeviceMode() {
+		return []types.Reporter{&reporter.PseudoReporter{}, rasReporter}
+	}
 	names := strings.Split(strings.TrimSpace(reporterNames), ",")
 	var reporters []types.Reporter
 	for _, name := range names {

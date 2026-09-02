@@ -29,6 +29,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	healthcheck "github.com/ibm-aiu/spyre-health-checker/internal/healthcheck"
+	reporter "github.com/ibm-aiu/spyre-health-checker/internal/reporter"
 	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
 	"github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	. "github.com/ibm-aiu/spyre-health-checker/pkg/server"
@@ -139,7 +140,7 @@ var _ = Describe("Server", Ordered, func() {
 		It("concurrent access to vitals is thread-safe", func() {
 			// This test verifies that RegisterForSpyreDevicesEvents uses GetVitalStates()
 			// which is thread-safe, preventing data races when vitals are updated concurrently
-			vitals := healthcheck.NewVitals(nil)
+			vitals := healthcheck.NewVitals([]types.Reporter{&reporter.PseudoReporter{}})
 			vitals.States = []types.DeviceState{
 				{PciAddress: "0000:01:00.0", State: spyre.DEVICE_STATE_ONLINE},
 			}

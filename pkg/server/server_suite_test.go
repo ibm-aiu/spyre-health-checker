@@ -36,7 +36,9 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	healthcheck "github.com/ibm-aiu/spyre-health-checker/internal/healthcheck"
+	reporter "github.com/ibm-aiu/spyre-health-checker/internal/reporter"
 	utils "github.com/ibm-aiu/spyre-health-checker/internal/utils"
+	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -325,7 +327,11 @@ func startServer() Server {
 	defer logger.Sync() //nolint:errcheck
 	SetLogger(logger)
 
-	vitals := healthcheck.NewVitals(nil)
+	var reporters []types.Reporter
+	if utils.IsPseudoDeviceMode() {
+		reporters = []types.Reporter{&reporter.PseudoReporter{}}
+	}
+	vitals := healthcheck.NewVitals(reporters)
 	s := NewServer(vitals)
 
 	// Start secure server with mTLS
