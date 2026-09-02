@@ -8,9 +8,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	healthcheck "github.com/ibm-aiu/spyre-health-checker/internal/healthcheck"
@@ -20,6 +23,8 @@ import (
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 func getEnvOrDefault(key, defaultValue string) string {
@@ -30,7 +35,9 @@ func getEnvOrDefault(key, defaultValue string) string {
 }
 
 // buildReporters creates a slice of reporters from a comma-separated string.
-func buildReporters(reporterNames string) []types.Reporter {
+// rasReporter is always appended unconditionally — an empty RASReporter
+// contributes nothing to Merge() and requires no flag to enable.
+func buildReporters(reporterNames string, rasReporter *reporter.RASReporter) []types.Reporter {
 	names := strings.Split(strings.TrimSpace(reporterNames), ",")
 	var reporters []types.Reporter
 	for _, name := range names {
@@ -48,6 +55,7 @@ func buildReporters(reporterNames string) []types.Reporter {
 		// Default to lspci if no valid reporters were found
 		reporters = append(reporters, &reporter.LSPCIReporter{})
 	}
+	reporters = append(reporters, rasReporter)
 	return reporters
 }
 
@@ -80,6 +88,11 @@ var (
 		getEnvOrDefault("SPYRE_TLS_CA", "/etc/spyre-health-checker/certs/ca.crt"),
 		"Path to CA certificate file (can be set via SPYRE_TLS_CA env var)",
 	)
+	rasWatcherNamespaces = flag.String(
+		"ras-watcher-limit-namespaces",
+		"",
+		"Comma-separated list of namespaces the RAS pod watcher trusts. Empty (default) watches all namespaces.",
+	)
 )
 
 func main() {
@@ -90,7 +103,14 @@ func main() {
 
 	server.SetLogger(logger)
 
-	reporters := buildReporters(*enabledReporters)
+	rasReporter := reporter.NewRASReporter()
+	rasReporter.SetLogger(logger)
+	if *rasWatcherNamespaces != "" {
+		nsList := strings.Split(*rasWatcherNamespaces, ",")
+		rasReporter.SetAllowedNamespaces(nsList)
+		logger.Infof("RAS pod watcher namespace allowlist: %v", nsList)
+	}
+	reporters := buildReporters(*enabledReporters, rasReporter)
 	logger.Infof("Enabled reporters: %v", *enabledReporters)
 	vitals := healthcheck.NewVitals(reporters)
 
@@ -120,6 +140,25 @@ func main() {
 		os.Exit(1) //nolint:gocritic
 	}
 	defer s.Stop()
+
+	// Signal-aware context for the RAS pod watcher goroutine.
+	// defer cancel() is registered AFTER defer s.Stop() so it executes FIRST
+	// (LIFO), ensuring the watcher goroutine is cancelled before the server
+	// closes the update queue.
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
+	// Start the RAS pod watcher if running inside a Kubernetes cluster.
+	// Failure to build the kube client is non-fatal — the health-checker
+	// continues to work; RASReporter.Collect() simply returns empty.
+	if cfg, err := rest.InClusterConfig(); err != nil {
+		logger.Warnf("RAS pod watcher disabled: not running in-cluster (%v)", err)
+	} else if kubeClient, err := kubernetes.NewForConfig(cfg); err != nil {
+		logger.Warnf("RAS pod watcher disabled: failed to build kube client (%v)", err)
+	} else {
+		logger.Infof("Starting RAS pod watcher for node %q", utils.NodeName)
+		rasReporter.Start(ctx, kubeClient, utils.NodeName)
+	}
 
 	utils.InitMetrics(prometheus.DefaultRegisterer)
 

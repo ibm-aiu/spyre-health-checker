@@ -35,6 +35,11 @@ import (
 	"github.com/ibm-aiu/spyre-health-checker/pkg/types"
 )
 
+const (
+	TestPCIAddress  = "0000:1a:00.0"
+	TestPCIAddress2 = "0000:2b:00.0"
+)
+
 var _ = Describe("Server", Ordered, func() {
 
 	var c *Client
@@ -118,14 +123,14 @@ var _ = Describe("Server", Ordered, func() {
 
 		It("can update healths", func() {
 			TestHealthServer.UpdateHealths([]types.DeviceState{
-				{PciAddress: "0000:1a:00.0", State: spyre.DEVICE_STATE_IN_ERROR},
+				{PciAddress: TestPCIAddress, State: spyre.DEVICE_STATE_IN_ERROR},
 			})
 			Eventually(func(g Gomega) {
 				healths := c.GetHealths()
 				g.Expect(healths).NotTo(BeNil())
 				g.Expect(healths).To(HaveLen(1))
 				for pciAddr, health := range healths {
-					Expect(pciAddr).To(Equal("0000:1a:00.0"))
+					Expect(pciAddr).To(Equal(TestPCIAddress))
 					Expect(health).To(BeFalse())
 				}
 			}).WithTimeout(10 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
@@ -292,7 +297,7 @@ var _ = Describe("Server", Ordered, func() {
 					Devices: []*spyre.Device{
 						{
 							DeviceID: &spyre.DeviceID{
-								PCIAddress: "0000:1a:00.0",
+								PCIAddress: TestPCIAddress,
 							},
 							DeviceType:  spyre.DEVICE_TYPE_PF,
 							DeviceState: spyre.DEVICE_STATE_ONLINE,
@@ -414,7 +419,7 @@ var _ = Describe("Server", Ordered, func() {
 					Devices: []*spyre.Device{
 						{
 							DeviceID: &spyre.DeviceID{
-								PCIAddress: "0000:1a:00.0",
+								PCIAddress: TestPCIAddress,
 							},
 							DeviceType:  spyre.DEVICE_TYPE_PF,
 							DeviceState: spyre.DEVICE_STATE_ONLINE,
@@ -435,8 +440,8 @@ var _ = Describe("Server", Ordered, func() {
 
 				// Now send an update with a new device
 				TestHealthServer.UpdateHealths([]types.DeviceState{
-					{PciAddress: "0000:1a:00.0", State: spyre.DEVICE_STATE_ONLINE},
-					{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE}, // New device
+					{PciAddress: TestPCIAddress, State: spyre.DEVICE_STATE_ONLINE},
+					{PciAddress: TestPCIAddress2, State: spyre.DEVICE_STATE_ONLINE}, // New device
 				})
 
 				// Receive the update
@@ -447,7 +452,7 @@ var _ = Describe("Server", Ordered, func() {
 				// The new device should be present and not marked as REMOVED
 				foundNewDevice := false
 				for _, device := range deviceList.Devices {
-					if device.DeviceID.PCIAddress == "0000:2b:00.0" {
+					if device.DeviceID.PCIAddress == TestPCIAddress2 {
 						foundNewDevice = true
 						Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
 					}
@@ -456,7 +461,7 @@ var _ = Describe("Server", Ordered, func() {
 
 				// Send another update without the original device
 				TestHealthServer.UpdateHealths([]types.DeviceState{
-					{PciAddress: "0000:2b:00.0", State: spyre.DEVICE_STATE_ONLINE},
+					{PciAddress: TestPCIAddress2, State: spyre.DEVICE_STATE_ONLINE},
 				})
 
 				// Receive the update
@@ -467,7 +472,7 @@ var _ = Describe("Server", Ordered, func() {
 				// The original device should now be marked as REMOVED
 				foundRemovedDevice := false
 				for _, device := range deviceList.Devices {
-					if device.DeviceID.PCIAddress == "0000:1a:00.0" {
+					if device.DeviceID.PCIAddress == TestPCIAddress {
 						foundRemovedDevice = true
 						Expect(device.DeviceState).To(Equal(spyre.DEVICE_STATE_REMOVED))
 					}
@@ -477,7 +482,7 @@ var _ = Describe("Server", Ordered, func() {
 				// The new device should still be present and not marked as REMOVED
 				foundNewDevice = false
 				for _, device := range deviceList.Devices {
-					if device.DeviceID.PCIAddress == "0000:2b:00.0" {
+					if device.DeviceID.PCIAddress == TestPCIAddress2 {
 						foundNewDevice = true
 						Expect(device.DeviceState).NotTo(Equal(spyre.DEVICE_STATE_REMOVED))
 					}
