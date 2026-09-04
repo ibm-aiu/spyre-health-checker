@@ -21,8 +21,8 @@ jobs:
     needs: pre-commit
     uses: ibm-aiu/spyre-operator-actions/.github/workflows/unit-test.yaml@main
 
-  # # Add the following test when CRC E2E test is ready
-  # e2e-test:
-  #  needs: unit-test
-  #  if: contains(github.event.pull_request.labels.*.name, 'ok-to-test')
-  #  uses: ibm-aiu/spyre-operator-actions/.github/workflows/crc-e2e-test.yaml@main
+  e2e-test:
+    needs: unit-test
+    if: contains(github.event.pull_request.labels.*.name, 'ok-to-test')
+    uses: ./.github/workflows/e2e-test.yaml
+    secrets: inherit
