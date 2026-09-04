@@ -9,9 +9,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
-permissions:
-  contents: read
-  packages: write
+permissions: read-all
 
 env:
   GOTOOLCHAIN: auto
