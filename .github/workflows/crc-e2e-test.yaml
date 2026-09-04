@@ -45,7 +45,7 @@ jobs:
     uses: ibm-aiu/spyre-operator-actions/.github/workflows/crc-e2e-test.yaml@main
     with:
       runner: ${{ inputs.runner || 'ubuntu-24.04' }}
-      branch-name: ${{ inputs.branch-name || github.head_ref || github.ref_name }}
+      branch-name: ${{ inputs.branch-name || 'main' }}
       registry: ${{ inputs.registry || 'ghcr.io/ibm-aiu' }}
       pr-url: ${{ inputs.pr-url || (github.event_name == 'pull_request' && github.event.pull_request.html_url
         || '') }}
