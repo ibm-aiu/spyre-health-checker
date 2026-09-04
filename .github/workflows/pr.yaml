@@ -23,6 +23,6 @@ jobs:
 
   e2e-test:
     needs: unit-test
-    if: contains(github.event.pull_request.labels.*.name, 'ok-to-test')
+    if: contains(github.event.pull_request.labels.*.name, 'require-e2e-test')
     uses: ./.github/workflows/e2e-test.yaml
     secrets: inherit
