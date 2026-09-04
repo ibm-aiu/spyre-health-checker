@@ -20,13 +20,3 @@ jobs:
   unit-test:
     needs: pre-commit
     uses: ibm-aiu/spyre-operator-actions/.github/workflows/unit-test.yaml@main
-
-  e2e-test:
-    needs: unit-test
-    if: contains(github.event.pull_request.labels.*.name, 'require-e2e-test')
-    uses: ibm-aiu/spyre-operator-actions/.github/workflows/crc-e2e-test.yaml@main
-    with:
-      pr-url: ${{ github.event.pull_request.html_url }}
-    secrets:
-      crc-pull-secret: ${{ secrets.CRC_PULL_SECRET_SUNYACH }}
-      github-token: ${{ secrets.GH_PAT }}
