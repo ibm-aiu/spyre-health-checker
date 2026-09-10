@@ -7,16 +7,16 @@ changelog:
     - app/dependabot
     - Spyre-Operator <spyre-operator@users.noreply.github.com>
   categories:
-  - title: Breaking Changes 🔔
+  - title: Breaking Changes
     labels:
     - semver-major
-  - title: Features 🎉
+  - title: Features
     labels:
     - enhancement
-  - title: Fixes 🛠
+  - title: Fixes
     labels:
     - bug
-  - title: Operations ♻️
+  - title: Operations
     labels:
     - chore
   - title: Other Changes

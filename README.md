@@ -1,46 +1,59 @@
 # spyre-health-checker
 
-Health Checker for AIU Spyre Cards
+Health Checker for AIU Spyre Cards.
+
+This client-server system uses gRPC streaming and is a simplified implementation
+of the health checking found in
+[spyre-device-plugin](https://github.com/ibm-aiu/spyre-device-plugin).
+
+The server runs on a UNIX socket (default
+`/usr/local/etc/device-plugins/health/checker.sock`) with mTLS. It periodically
+runs health checks using a pluggable reporter framework and streams device state
+updates to connected clients.
+
+The periodic check timer can be set via the `--timer` flag in duration format,
+such as `5s` or `1h40m` (default `1h`).
 
 ## Requirements
 
-The health checker requires the `lspci` command to gather information on Spyre cards.
+- `lspci` must be available on the host when using the `lspci` reporter.
+- Access to the `aiu-cardmgmt-health-api` UNIX socket is required when the
+  `cardmgmt` reporter is enabled.
+- A Kubernetes `ClusterRole` granting `pods` and `pods/log` access is required
+  for the RAS pod watcher (see [Kubernetes deployment](docs/deployment.md#rbac)).
 
-## Simple setup
+## Documentation
 
-This client-server system, using gRPC streaming, is a simplified implementation of that found in `https://github.com/ibm-aiu/spyre-device-plugin`.
-The server runs on `localhost:50051`.
+| Topic | Description |
+|---|---|
+| [Reporters](docs/reporters.md) | Reporter framework, merge rules, lspci / cardmgmt / RAS / pseudo device mode |
+| [TLS reference](docs/tls.md) | Channel A & B overview, certificate requirements, troubleshooting |
+| [Kubernetes deployment](docs/deployment.md) | RBAC, socket wiring, Pod manifests |
+| [Configuration reference](docs/configuration.md) | All flags and environment variables |
+| [Development guide](docs/development.md) | Building, testing, protobuf generation |
+| [Health indicators](docs/health-indicators.md) | How card health is determined (lspci filters, driver check) |
 
-The proto file comes from there. It can be edited and built via:
+Detailed design documents are in [`enhancements/`](enhancements/).
 
-```sh
-make protoc-gen
+## Quick start
+
+```bash
+# Install tools and vendor dependencies
+make ginkgo envtest vendor
+
+# Generate local dev TLS certs (once per clone)
+make gen-local-certs
+
+# Run the test suite
+make test
+
+# Build the binary
+go build -o spyre-health-checker ./cmd/health-checker/
 ```
 
-This project has a client and a server.
 
-The server periodically runs health checks:
+## Repository links
 
-- By default the checker will call `lspci -vvvnn`
-- If the user runs `export PSEUDO_DEVICE_MODE=1` before running the server, then a default set of pseudo devices are processed.
-
-The periodic check timer can be set via command line parameter
-in the format h-m-s, such as `5s` or `1h40m`.
-
-## Indicators of Spyre Card Health
-
-Indicators of Spyre card health include the following:
-- First, according to `lspci -vvvnn` output, the following pci devices are filtered out:
-    - devices where vendor:device ID for the device is neither `1014:06a7` nor `1014:06a8`.
-    - devices where 'REV' is not `01`.
-- If `REV` is `ff` then set device status to `DEVICE_STATE_IN_ERROR`
-- Finally, if `os.Stat()` for the device driver (e.g., `/sys/bus/pci/devices/<PCI Address>/driver` fails for any reason, including timeout, set the device status to `DEVICE_STATE_IN_ERROR`
-
-Although not implemented at the moment the following could considered for future development:
-
-- If state is not `D0`, the card could be considered to be offline.
-- If flags such as `SERR+`, `TAbort+`, `MAbort+` or `FatalErr+` are set, the card could be considered to be in an error state.
-- The existence of a correct driver in the location reported by `lspci` could be considered.
-
-## License
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+- [Contributing](CONTRIBUTING.md)
+- [Maintainers](MAINTAINERS.md)
+- [License](LICENSE)

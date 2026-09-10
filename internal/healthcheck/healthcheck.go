@@ -68,7 +68,7 @@ func fileIsAccessible(path string) bool {
 
 // updateDriverStatus sets the state of a device to DEVICE_STATE_IN_ERROR if
 // its driver path is not accessible within the timeout.
-// States produced by the pseudo reporter are skipped — they have no real
+// States produced by the pseudo reporter are skipped -- they have no real
 // sysfs entries and their health is already encoded in the static list.
 func updateDriverStatus(states []types.DeviceState) {
 	for i := range states {

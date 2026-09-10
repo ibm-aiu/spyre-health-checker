@@ -74,19 +74,19 @@ var _ = DescribeTable("Merge",
 		}
 	},
 
-	Entry("no reporters → empty result",
+	Entry("no reporters -> empty result",
 		mergeTC{
 			reporters: []types.Reporter{},
 		}),
 
-	Entry("single reporter with no states → empty result",
+	Entry("single reporter with no states -> empty result",
 		mergeTC{
 			reporters: []types.Reporter{
 				&stubReporter{name: "empty", priority: types.PriorityLSPCI, states: []types.DeviceState{}},
 			},
 		}),
 
-	Entry("single reporter with states → all states returned",
+	Entry("single reporter with states -> all states returned",
 		mergeTC{
 			reporters: []types.Reporter{
 				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
@@ -97,8 +97,8 @@ var _ = DescribeTable("Merge",
 			wantLen: 2,
 		}),
 
-	// existing=ERROR, new=ONLINE → no override; unhealthy is sticky.
-	Entry("higher-priority reporter cannot promote error→online",
+	// existing=ERROR, new=ONLINE -> no override; unhealthy is sticky.
+	Entry("higher-priority reporter cannot promote error->online",
 		mergeTC{
 			reporters: []types.Reporter{
 				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
@@ -113,8 +113,8 @@ var _ = DescribeTable("Merge",
 			wantState:  pb.DEVICE_STATE_IN_ERROR,
 		}),
 
-	// existing=ONLINE, new=ERROR → override; higher-priority can mark a healthy device unhealthy.
-	Entry("higher-priority reporter can downgrade online→error",
+	// existing=ONLINE, new=ERROR -> override; higher-priority can mark a healthy device unhealthy.
+	Entry("higher-priority reporter can downgrade online->error",
 		mergeTC{
 			reporters: []types.Reporter{
 				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
@@ -129,8 +129,8 @@ var _ = DescribeTable("Merge",
 			wantState:  pb.DEVICE_STATE_IN_ERROR,
 		}),
 
-	// existing=ONLINE, new=ONLINE → override; higher-priority wins.
-	Entry("higher-priority reporter overrides online→online",
+	// existing=ONLINE, new=ONLINE -> override; higher-priority wins.
+	Entry("higher-priority reporter overrides online->online",
 		mergeTC{
 			reporters: []types.Reporter{
 				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
@@ -145,8 +145,8 @@ var _ = DescribeTable("Merge",
 			wantState:  pb.DEVICE_STATE_ONLINE,
 		}),
 
-	// existing=ERROR, new=ERROR → override; higher-priority wins.
-	Entry("higher-priority reporter overrides error→error",
+	// existing=ERROR, new=ERROR -> override; higher-priority wins.
+	Entry("higher-priority reporter overrides error->error",
 		mergeTC{
 			reporters: []types.Reporter{
 				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
@@ -204,7 +204,7 @@ var _ = DescribeTable("Merge",
 			wantErrSubstr: []string{"2 reporter error(s)", `"bad1"`, `"bad2"`},
 		}),
 
-	Entry("all reporters fail → error, no results",
+	Entry("all reporters fail -> error, no results",
 		mergeTC{
 			reporters:     []types.Reporter{&errReporter{name: "bad1"}, &errReporter{name: "bad2"}},
 			wantErr:       true,
@@ -212,10 +212,10 @@ var _ = DescribeTable("Merge",
 		}),
 
 	// All four state-transition cases exercised across four devices in one pass:
-	// 1a: lspci=ERROR, cardmgmt=ONLINE  → lspci/ERROR kept   (sticky unhealthy, no promotion)
-	// 1b: lspci=ONLINE, cardmgmt=ERROR  → cardmgmt/ERROR wins (higher-priority downgrades)
-	// 1c: lspci=ONLINE, cardmgmt=ONLINE → cardmgmt/ONLINE wins (higher-priority, same state)
-	// 1d: lspci=ERROR,  cardmgmt=ERROR  → cardmgmt/ERROR wins  (higher-priority, same state)
+	// 1a: lspci=ERROR, cardmgmt=ONLINE  -> lspci/ERROR kept   (sticky unhealthy, no promotion)
+	// 1b: lspci=ONLINE, cardmgmt=ERROR  -> cardmgmt/ERROR wins (higher-priority downgrades)
+	// 1c: lspci=ONLINE, cardmgmt=ONLINE -> cardmgmt/ONLINE wins (higher-priority, same state)
+	// 1d: lspci=ERROR,  cardmgmt=ERROR  -> cardmgmt/ERROR wins  (higher-priority, same state)
 	Entry("all four transition cases across multiple devices",
 		mergeTC{
 			reporters: []types.Reporter{

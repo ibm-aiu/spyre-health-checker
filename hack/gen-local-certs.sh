@@ -4,17 +4,17 @@
 # | SPDX-License-Identifier: Apache-2.0                               |
 # +-------------------------------------------------------------------+
 #
-# gen-local-certs.sh — generate a self-signed CA and TLS certificate/key
+# gen-local-certs.sh -- generate a self-signed CA and TLS certificate/key
 # pairs for local development and mTLS testing.
 #
 # Output directory defaults to ./certs (override with CERT_DIR env var).
 # Files produced:
-#   ca.crt            — self-signed CA certificate
-#   ca.key            — CA private key
-#   tls.crt           — server/client certificate (signed by ca.crt)
-#   tls.key           — server/client private key
-#   fake-client.crt   — self-signed cert NOT trusted by the server (untrusted-CA testing)
-#   fake-client.key   — fake-client private key
+#   ca.crt            -- self-signed CA certificate
+#   ca.key            -- CA private key
+#   tls.crt           -- server/client certificate (signed by ca.crt)
+#   tls.key           -- server/client private key
+#   fake-client.crt   -- self-signed cert NOT trusted by the server (untrusted-CA testing)
+#   fake-client.key   -- fake-client private key
 #
 # Usage:
 #   bash hack/gen-local-certs.sh
@@ -25,7 +25,7 @@ set -euo pipefail
 CERT_DIR="${CERT_DIR:-$(pwd)/certs}"
 mkdir -p "${CERT_DIR}"
 
-DAYS=3650 # 10-year validity — dev use only
+DAYS=3650 # 10-year validity -- dev use only
 KEYBITS=4096
 
 echo "==> Generating certificates in: ${CERT_DIR}"
@@ -61,7 +61,7 @@ openssl req -new -x509 \
 	-days ${DAYS}
 
 # ---------------------------------------------------------------------------
-# 2. Single TLS certificate — used by both server and client
+# 2. Single TLS certificate -- used by both server and client
 # ---------------------------------------------------------------------------
 echo "--> TLS key & certificate (shared server/client)"
 openssl genrsa -out "${CERT_DIR}/tls.key" ${KEYBITS} 2>/dev/null
@@ -103,7 +103,7 @@ openssl x509 -req \
 rm -f "${CERT_DIR}/tls.csr"
 
 # ---------------------------------------------------------------------------
-# 3. Fake client certificate — self-signed by its own key (untrusted CA)
+# 3. Fake client certificate -- self-signed by its own key (untrusted CA)
 #    Use this to test that the server correctly rejects clients whose cert
 #    is not signed by the trusted CA.
 # ---------------------------------------------------------------------------

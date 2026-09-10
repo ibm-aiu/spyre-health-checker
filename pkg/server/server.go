@@ -401,7 +401,7 @@ func (s *healthServer) getPbDevices(states []types.DeviceState) []*pb.Device {
 
 // authorizeClientCert is the shared application-level policy check applied after
 // the TLS handshake succeeds. It returns Unauthenticated when the client cert
-// does not carry an Organisation field — a minimal example of post-handshake
+// does not carry an Organisation field -- a minimal example of post-handshake
 // certificate inspection that would be extended with real policy in production
 // (e.g. CN allow-list, SPIFFE SVID validation).
 func authorizeClientCert(ctx context.Context) error {

@@ -20,7 +20,7 @@ goroutine exits cleanly when the context is cancelled on `SIGTERM`/`SIGINT`.
 RAS (Reliability, Availability, Serviceability) hardware errors are surfaced in workload
 pod logs, not in kernel sysfs or any service polled by the existing reporters. When a
 workload pod crashes due to a PCIe failure on a Spyre device, the existing `LSPCIReporter`
-and `CardmgmtReporter` may still report the device as `ONLINE` — because the hardware
+and `CardmgmtReporter` may still report the device as `ONLINE` -- because the hardware
 registers are intact but the device is functionally broken for that workload.
 
 `RASReporter` closes this gap by:
@@ -28,7 +28,7 @@ registers are intact but the device is functionally broken for that workload.
 - Watching for pods in `Failed` phase or `CrashLoopBackOff` that request an
   `ibm.com/spyre_*` resource.
 - Scanning their logs for structured RAS error lines.
-- Recording `DEVICE_STATE_IN_ERROR` with priority 10 — high enough to override any
+- Recording `DEVICE_STATE_IN_ERROR` with priority 10 -- high enough to override any
   `ONLINE` assertion from lower-priority reporters.
 
 ---
@@ -48,9 +48,9 @@ A pod is scanned if and only if **both** conditions are met:
 
 Container logs are scanned line-by-line using a stateful two-marker approach:
 
-1. **SEN line** — contains `SEN:VFIO:TYPE1:<pciAddress>`. When matched, `lastPCI` is
+1. **SEN line** -- contains `SEN:VFIO:TYPE1:<pciAddress>`. When matched, `lastPCI` is
    updated to the extracted PCI address.
-2. **RAS error line** — contains both `"name":"RAS::` and `"severity":"ERROR"`. When
+2. **RAS error line** -- contains both `"name":"RAS::` and `"severity":"ERROR"`. When
    matched and `lastPCI != ""`, `addRASError(lastPCI)` is called.
 
 The SEN line always appears before the corresponding RAS error in the same log stream,
@@ -84,7 +84,7 @@ restarted the map starts empty and is repopulated only if the failing workload p
 still present and its logs still contain RAS error lines when the watcher re-scans it.
 There is no persistence, no admin clear endpoint, and no cross-restart state.
 
-### Permission errors → permanent disable
+### Permission errors -> permanent disable
 
 If the Kubernetes API returns `403 Forbidden` or `401 Unauthorized` on a `Watch` or
 `GetLogs` call, the reporter logs a warning, sets `disabled = true`, and the retry loop
@@ -143,10 +143,10 @@ following retry loop:
 ```
 loop:
   watchPods(ctx, client, nodeName)   // blocks until watch channel closed or ctx done
-  if disabled → return
+  if disabled -> return
   select:
-    ctx.Done() → return
-    time.After(5s) → continue loop   // back-off before re-establishing watch
+    ctx.Done() -> return
+    time.After(5s) -> continue loop   // back-off before re-establishing watch
 ```
 
 `Start` must be called at most once. Calling it without a Kubernetes client (e.g. in
@@ -160,9 +160,9 @@ Defined in [`pkg/types/types.go`](../pkg/types/types.go):
 
 | Constant | Value | Reporter |
 |---|---|---|
-| `PriorityLSPCI` | 1 | `LSPCIReporter` — hardware scan (lowest) |
-| `PriorityCardmgmt` | 5 | `CardmgmtReporter` — card management service |
-| `PriorityRAS` | 10 | `RASReporter` — RAS pod watcher (highest) |
+| `PriorityLSPCI` | 1 | `LSPCIReporter` -- hardware scan (lowest) |
+| `PriorityCardmgmt` | 5 | `CardmgmtReporter` -- card management service |
+| `PriorityRAS` | 10 | `RASReporter` -- RAS pod watcher (highest) |
 
 `PriorityRAS = 10` ensures that a RAS-detected hardware error always outranks any
 `ONLINE` assertion from lspci (1) or cardmgmt (5). The sticky-error rule in `Merge`
@@ -170,16 +170,16 @@ then prevents a lower-priority `ONLINE` from displacing it:
 
 | Existing (RAS) | Incoming (lspci/cardmgmt) | Result |
 |---|---|---|
-| `IN_ERROR` (p=10) | `ONLINE` (p=1 or 5) | **`IN_ERROR` kept** — lower priority cannot clear |
-| `IN_ERROR` (p=10) | `IN_ERROR` (p=1 or 5) | **`IN_ERROR` kept** — lower priority loses |
-| _(absent)_ | `ONLINE` (p=1) | **`ONLINE`** — RAS map is empty |
+| `IN_ERROR` (p=10) | `ONLINE` (p=1 or 5) | **`IN_ERROR` kept** -- lower priority cannot clear |
+| `IN_ERROR` (p=10) | `IN_ERROR` (p=1 or 5) | **`IN_ERROR` kept** -- lower priority loses |
+| _(absent)_ | `ONLINE` (p=1) | **`ONLINE`** -- RAS map is empty |
 
 ---
 
 ## `main.go` wiring
 
 ```go
-// Signal-aware context — cancelled on SIGTERM/SIGINT.
+// Signal-aware context -- cancelled on SIGTERM/SIGINT.
 // defer cancel() is registered AFTER defer s.Stop() so it fires FIRST (LIFO),
 // ensuring the watcher goroutine exits before the server closes its update queue.
 defer s.Stop()
@@ -199,7 +199,7 @@ if cfg, err := rest.InClusterConfig(); err != nil {
 }
 ```
 
-Failure to build the kube client is non-fatal — the health-checker continues to
+Failure to build the kube client is non-fatal -- the health-checker continues to
 function; `RASReporter.Collect()` returns empty with no error.
 
 ---
@@ -208,13 +208,13 @@ function; `RASReporter.Collect()` returns empty with no error.
 
 ```
 internal/reporter/
-├── ras.go               # RASReporter, Start, watchPods, fetchAndScanLogs,
-│                        # scanLines, scanContainerLogs, addRASError,
-│                        # containsRASError, extractSENPCIAddress,
-│                        # requestsSpyreResource, isFailedOrCrashLooping
-└── ras_test.go          # full white-box test suite (Ginkgo v2 / Gomega)
++--- ras.go               # RASReporter, Start, watchPods, fetchAndScanLogs,
+|                        # scanLines, scanContainerLogs, addRASError,
+|                        # containsRASError, extractSENPCIAddress,
+|                        # requestsSpyreResource, isFailedOrCrashLooping
+`--- ras_test.go          # full white-box test suite (Ginkgo v2 / Gomega)
     testdata/
-    └── ras_timeout_log.txt  # real crash log used as a scanLines fixture
+    `--- ras_timeout_log.txt  # real crash log used as a scanLines fixture
 
 pkg/types/types.go       # PriorityRAS = 10 added
 cmd/health-checker/main.go  # wired: NewRASReporter, Start, signal context
@@ -226,7 +226,7 @@ cmd/health-checker/main.go  # wired: NewRASReporter, Start, signal context
 
 | Decision | Rationale |
 |---|---|
-| Pod watcher lives inside `RASReporter` | Single cohesive unit — the reporter owns both the error map and the goroutine that populates it; no separate package needed |
+| Pod watcher lives inside `RASReporter` | Single cohesive unit -- the reporter owns both the error map and the goroutine that populates it; no separate package needed |
 | `ctx` cancellation as the shutdown signal | `main` passes a `signal.NotifyContext` context; on `SIGTERM`/`SIGINT` the context is cancelled and the watch loop exits before `s.Stop()` is called |
 | `defer cancel()` registered after `defer s.Stop()` | LIFO defers ensure context cancellation fires first, giving the watch goroutine a chance to exit before the server closes the update queue |
 | `PriorityRAS = 10` (highest) | RAS is a direct hardware signal from the workload's perspective; it must outrank card management (5) and lspci (1) |
@@ -234,8 +234,8 @@ cmd/health-checker/main.go  # wired: NewRASReporter, Start, signal context
 | `Start` is a no-op if kube client unavailable | Health-checker must still work outside Kubernetes (dev, CI); `Collect()` returns empty with no error |
 | `Previous: true` for CrashLoopBackOff containers | The container is currently waiting; the error lines are in the previous (crashed) run's log |
 | `TailLines: 100` | Keeps memory use bounded; RAS errors and their preceding SEN lines always appear near the tail of a crashing container's log |
-| 403/401 → permanent disable | Permission errors are operator configuration problems, not transient failures; retrying indefinitely would spam the API and logs |
-| Generic watch errors → backoff + retry | Transient network failures, watch expiry, and server restarts are expected; the loop re-establishes the watch after 5 s |
+| 403/401 -> permanent disable | Permission errors are operator configuration problems, not transient failures; retrying indefinitely would spam the API and logs |
+| Generic watch errors -> backoff + retry | Transient network failures, watch expiry, and server restarts are expected; the loop re-establishes the watch after 5 s |
 | Filter pods client-side for `ibm.com/spyre_*` | `fieldSelector` cannot filter on resource requests; filtering is done after receiving the event |
 | `ClusterRole` required for RBAC | Pod watch uses `fieldSelector: spec.nodeName=<NODE_NAME>` across all namespaces; a namespaced `Role` is insufficient |
 | `pods/log` listed separately in RBAC | Kubernetes treats log streaming as a sub-resource; it must be explicitly granted alongside `pods` |
@@ -246,58 +246,58 @@ cmd/health-checker/main.go  # wired: NewRASReporter, Start, signal context
 
 Tests live entirely inside `package reporter` (white-box) and are driven by
 [Ginkgo v2](https://onsi.github.io/ginkgo/) + Gomega. All test assertions about log
-content use `scanLines(io.Reader)` directly — the fake kube client's `GetLogs` is
+content use `scanLines(io.Reader)` directly -- the fake kube client's `GetLogs` is
 hardwired to return `"fake logs"` and cannot be intercepted via reactors.
 
 ### `ras_test.go` coverage
 
-**`containsRASError`** — `DescribeTable`, 5 entries
+**`containsRASError`** -- `DescribeTable`, 5 entries
 
 | Entry | Scenario |
 |---|---|
-| Full RAS error line | Both markers present → `true` |
-| Only `"name":"RAS::"` | Missing severity → `false` |
-| Only `"severity":"ERROR"` | Missing name → `false` |
-| Neither marker | Normal log line → `false` |
-| Empty string | → `false` |
+| Full RAS error line | Both markers present -> `true` |
+| Only `"name":"RAS::"` | Missing severity -> `false` |
+| Only `"severity":"ERROR"` | Missing name -> `false` |
+| Neither marker | Normal log line -> `false` |
+| Empty string | -> `false` |
 
-**`extractSENPCIAddress`** — `DescribeTable`, 4 entries
-
-| Entry | Scenario |
-|---|---|
-| Full-domain address | `SEN:VFIO:TYPE1:0000:2e:00.0` → `"0000:2e:00.0"` |
-| Short-form address | `SEN:VFIO:TYPE1:2e:00.0` → `"0000:2e:00.0"` (normalised) |
-| No SEN pattern | RAS error line → `""` |
-| Empty string | → `""` |
-
-**`requestsSpyreResource`** — `DescribeTable`, 3 entries
+**`extractSENPCIAddress`** -- `DescribeTable`, 4 entries
 
 | Entry | Scenario |
 |---|---|
-| Pod with `ibm.com/spyre_gpu` | → accepted |
-| Pod with only `cpu` request | → rejected |
-| Pod with no resource requests | → rejected |
+| Full-domain address | `SEN:VFIO:TYPE1:0000:2e:00.0` -> `"0000:2e:00.0"` |
+| Short-form address | `SEN:VFIO:TYPE1:2e:00.0` -> `"0000:2e:00.0"` (normalised) |
+| No SEN pattern | RAS error line -> `""` |
+| Empty string | -> `""` |
 
-**`isFailedOrCrashLooping`** — `DescribeTable`, 5 entries
+**`requestsSpyreResource`** -- `DescribeTable`, 3 entries
 
 | Entry | Scenario |
 |---|---|
-| `Failed` phase | → accepted |
-| `CrashLoopBackOff` container | → accepted |
-| `Running`, no crash | → rejected |
-| `Pending`, no crash | → rejected |
-| `Succeeded` | → rejected |
+| Pod with `ibm.com/spyre_gpu` | -> accepted |
+| Pod with only `cpu` request | -> rejected |
+| Pod with no resource requests | -> rejected |
 
-**`RASReporter.addRASError and Collect`** — `Describe`, 4 specs
+**`isFailedOrCrashLooping`** -- `DescribeTable`, 5 entries
+
+| Entry | Scenario |
+|---|---|
+| `Failed` phase | -> accepted |
+| `CrashLoopBackOff` container | -> accepted |
+| `Running`, no crash | -> rejected |
+| `Pending`, no crash | -> rejected |
+| `Succeeded` | -> rejected |
+
+**`RASReporter.addRASError and Collect`** -- `Describe`, 4 specs
 
 | Spec | Scenario |
 |---|---|
 | Empty reporter | `Collect()` returns empty slice, no error |
 | Single `addRASError` | Returns one `IN_ERROR` entry with `Source="ras"`, `Priority=PriorityRAS` |
-| Same address twice | Idempotent — one entry |
+| Same address twice | Idempotent -- one entry |
 | Two different addresses | Two entries |
 
-**`RASReporter.scanLines`** — `DescribeTable`, 6 entries
+**`RASReporter.scanLines`** -- `DescribeTable`, 6 entries
 
 | Entry | Scenario |
 |---|---|
@@ -308,21 +308,21 @@ hardwired to return `"fake logs"` and cannot be intercepted via reactors.
 | Empty log | Nothing recorded |
 | `ras_timeout_log.txt` (real crash log) | `"0000:2e:00.0"` recorded |
 
-**`RASReporter.watchPods lifecycle`** — `DescribeTable`, 8 entries (fake kube client)
+**`RASReporter.watchPods lifecycle`** -- `DescribeTable`, 8 entries (fake kube client)
 
 | Entry | Scenario |
 |---|---|
 | `DELETED` event | Nothing recorded, not disabled |
 | `MODIFIED` Running pod (no crash) | Nothing recorded |
 | `ADDED` pod without spyre resource | Nothing recorded |
-| `ADDED` Failed spyre pod | GetLogs called (fake stub → nothing recorded) |
-| `ADDED` CrashLoopBackOff spyre pod | GetLogs called (fake stub → nothing recorded) |
+| `ADDED` Failed spyre pod | GetLogs called (fake stub -> nothing recorded) |
+| `ADDED` CrashLoopBackOff spyre pod | GetLogs called (fake stub -> nothing recorded) |
 | Watch returns 403 | `disabled=true` |
 | Watch returns 401 | `disabled=true` |
 | Watch returns generic error | Not disabled, `watchPods` returns |
 | ctx cancelled | Exits cleanly, nothing recorded |
 
-**`RASReporter.Start retry loop`** — `DescribeTable`, 3 entries
+**`RASReporter.Start retry loop`** -- `DescribeTable`, 3 entries
 
 | Entry | Scenario |
 |---|---|
@@ -334,7 +334,7 @@ hardwired to return `"fake logs"` and cannot be intercepted via reactors.
 > to avoid a data race between the reactor goroutine (write) and the test body (read)
 > after `<-ctx.Done()`.
 
-**`Merge with RASReporter`** — `DescribeTable`, 4 entries
+**`Merge with RASReporter`** -- `DescribeTable`, 4 entries
 
 | Entry | Scenario |
 |---|---|
@@ -364,7 +364,7 @@ The health-checker `ServiceAccount` requires the following additional `ClusterRo
 
 A `ClusterRole` (not a namespaced `Role`) is required because the watch uses
 `fieldSelector: spec.nodeName=<NODE_NAME>` across all namespaces. `pods/log` must be
-listed as a separate entry — Kubernetes treats log streaming as a distinct sub-resource.
+listed as a separate entry -- Kubernetes treats log streaming as a distinct sub-resource.
 
 ## Risk
 

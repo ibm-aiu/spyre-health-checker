@@ -59,7 +59,7 @@ const watchRetryDelay = 5 * time.Second
 //
 // If the Kubernetes API returns a permission error (403 Forbidden or 401
 // Unauthorized) on a Watch or GetLogs call, the reporter logs a warning and
-// disables itself permanently — the retry loop stops and Collect() continues
+// disables itself permanently -- the retry loop stops and Collect() continues
 // to return whatever errors were accumulated before the permission failure.
 type RASReporter struct {
 	mu                sync.RWMutex
@@ -242,13 +242,13 @@ func isFailedOrCrashLooping(pod *corev1.Pod) bool {
 // fetchAndScanLogs scans the logs of every container in pod that is either
 // terminated (pod phase Failed) or crash-looping (CrashLoopBackOff).
 //
-// For CrashLoopBackOff containers the container is currently waiting — the
+// For CrashLoopBackOff containers the container is currently waiting -- the
 // RAS error lines are in the previous (crashed) container's log, so
 // PodLogOptions.Previous is set to true for those containers.
 // For Failed-phase pods the container has terminated and its log is the
 // current one (Previous: false).
 func (r *RASReporter) fetchAndScanLogs(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) {
-	// Build a lookup from container name → whether it is crash-looping.
+	// Build a lookup from container name -> whether it is crash-looping.
 	crashLooping := make(map[string]bool, len(pod.Status.ContainerStatuses))
 	for _, cs := range pod.Status.ContainerStatuses {
 		if cs.State.Waiting != nil && cs.State.Waiting.Reason == "CrashLoopBackOff" {

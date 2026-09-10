@@ -560,7 +560,7 @@ var _ = Describe("mTLS", Ordered, func() {
 						RootCAs:    caPool,
 						ServerName: "test-server",
 						MinVersion: tls.VersionTLS12,
-						// No Certificates field – the client sends no cert.
+						// No Certificates field - the client sends no cert.
 					}
 					return grpc.NewClient(
 						"unix:"+mtlsSocket,
