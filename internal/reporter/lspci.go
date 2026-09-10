@@ -11,6 +11,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -36,13 +37,52 @@ func (r *LSPCIReporter) Priority() int { return types.PriorityLSPCI }
 // Collect executes lspci, parses the output, and stamps each entry with the
 // lspci source name and priority.
 func (r *LSPCIReporter) Collect() ([]types.DeviceState, error) {
-	out, err := exec.Command("sh", "-c", "lspci -vvvnn 2>/dev/null").CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("lspci reporter: %w", err)
+	// Verify lspci is reachable before running it. exec.LookPath searches the
+	// process PATH, which is the same PATH the subsequent exec.Command will use.
+	// This gives a clear, actionable error message instead of silently returning
+	// zero devices when lspci is missing (the shell's 2>/dev/null would otherwise
+	// swallow "command not found" and exit 0 with empty output).
+	if _, err := exec.LookPath("lspci"); err != nil {
+		return nil, fmt.Errorf("lspci reporter: lspci not found (%s): install lspci & pciutils: %w", pathEnv(), err)
 	}
+
+	// Run lspci -vvvnn. Stderr is included in the combined output so that any
+	// unexpected runtime error messages are captured rather than silently lost.
+	out, err := exec.Command("lspci", "-vvvnn").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("lspci reporter: lspci -vvvnn failed: %w\noutput: %s", err, string(out))
+	}
+
 	states := parseLSPCI(string(out))
+	if len(states) == 0 {
+		// Warn when lspci ran successfully but found no Spyre devices — this
+		// distinguishes "no cards present" from "lspci output changed format".
+		lspciDebugLog("lspci succeeded but found no IBM Spyre devices in output (%d bytes)", len(out))
+	} else {
+		lspciDebugLog("lspci found %d Spyre device(s)", len(states))
+	}
+
 	stamp(states, r.Name(), r.Priority())
 	return states, nil
+}
+
+// pathEnv returns the current PATH environment variable for use in error messages.
+func pathEnv() string {
+	if p := os.Getenv("PATH"); p != "" {
+		return p
+	}
+	return "(PATH not set)"
+}
+
+// lspciDebugLog is a package-level hook for debug/diagnostic logging from
+// LSPCIReporter. It writes to stderr prefixed with "lspci-reporter: " so that
+// it is visible in container logs when the binary is run with debug output but
+// does not depend on any logger being wired in. Override in tests if needed.
+var lspciDebugLog = func(format string, args ...any) {
+	// Use fmt.Printf so the message appears on stdout alongside the zap output
+	// and is not silently discarded. In production the caller (main.go) redirects
+	// stdout/stderr to the container log.
+	fmt.Printf("lspci-reporter: "+format+"\n", args...)
 }
 
 // ---------------------------------------------------------------------------
