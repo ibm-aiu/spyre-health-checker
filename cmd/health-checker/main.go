@@ -43,7 +43,7 @@ func getEnvOrDefault(key, defaultValue string) string {
 // logic is used in both real and pseudo modes. RASReporter is still included
 // so that RAS errors detected by the pod watcher override pseudo-healthy states
 // exactly as they would in production.
-func buildReporters(reporterNames string, rasReporter *reporter.RASReporter) []types.Reporter {
+func buildReporters(reporterNames string, rasReporter *reporter.RASReporter, cardHealthSocket string) []types.Reporter {
 	if utils.IsPseudoDeviceMode() {
 		return []types.Reporter{&reporter.PseudoReporter{}, rasReporter}
 	}
@@ -55,9 +55,25 @@ func buildReporters(reporterNames string, rasReporter *reporter.RASReporter) []t
 		case "lspci":
 			reporters = append(reporters, &reporter.LSPCIReporter{})
 		case "cardmgmt":
-			// CardmgmtReporter requires a CollectFn to be implemented
-			// for now we stub it
-			reporters = append(reporters, &reporter.CardmgmtReporter{})
+			// Wire a real CollectFn that queries the co-located
+			// aiu-cardmgmt-health-api sidecar over its UNIX socket.
+			// The slot list is obtained from LSPCIReporter so the
+			// cardmgmt reporter does not need its own device inventory.
+			client := reporter.NewCardHealthClient(cardHealthSocket)
+			lspci := &reporter.LSPCIReporter{}
+			reporters = append(reporters, &reporter.CardmgmtReporter{
+				CollectFn: func() ([]types.DeviceState, error) {
+					discovered, err := lspci.Collect()
+					if err != nil || len(discovered) == 0 {
+						return nil, err
+					}
+					slots := make([]string, len(discovered))
+					for i, s := range discovered {
+						slots[i] = s.PciAddress
+					}
+					return client.CollectForSlots(slots)
+				},
+			})
 		}
 	}
 	if len(reporters) == 0 {
@@ -102,6 +118,11 @@ var (
 		"",
 		"Comma-separated list of namespaces the RAS pod watcher trusts. Empty (default) watches all namespaces.",
 	)
+	cardHealthSocket = flag.String(
+		"cardhealth-socket",
+		getEnvOrDefault("CARDHEALTH_GRPC_SOCKET", "/var/run/cardmgmt-health-api/grpc.sock"),
+		"UNIX socket path for the aiu-cardmgmt-health-api sidecar (can be set via CARDHEALTH_GRPC_SOCKET env var)",
+	)
 )
 
 func main() {
@@ -119,7 +140,7 @@ func main() {
 		rasReporter.SetAllowedNamespaces(nsList)
 		logger.Infof("RAS pod watcher namespace allowlist: %v", nsList)
 	}
-	reporters := buildReporters(*enabledReporters, rasReporter)
+	reporters := buildReporters(*enabledReporters, rasReporter, *cardHealthSocket)
 	logger.Infof("Enabled reporters: %v", *enabledReporters)
 	vitals := healthcheck.NewVitals(reporters)
 
