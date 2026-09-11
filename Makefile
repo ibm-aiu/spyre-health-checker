@@ -123,7 +123,8 @@ $(GOVULCHECK): $(LOCALBIN)
 
 .PHONY: protoc-gen
 protoc-gen: ## Generated files from proto
-	go tool buf generate
+	go tool buf generate --template buf.gen.yaml pkg/proto/spyre_health
+	go tool buf generate --template buf.gen.cardhealth.yaml pkg/proto/cardhealth
 
 .PHONY: venv
 venv: ## Setup and activate venv
