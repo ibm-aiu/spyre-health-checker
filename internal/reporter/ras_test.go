@@ -98,13 +98,13 @@ var _ = Describe("containsRASError", func() {
 		},
 		Entry("full RAS error line matches",
 			rasLine, true),
-		Entry("only RAS name present → no match",
+		Entry("only RAS name present -> no match",
 			`{"name":"RAS::PCI::PCIeFailure"}`, false),
-		Entry("only ERROR severity present → no match",
+		Entry("only ERROR severity present -> no match",
 			`{"severity":"ERROR"}`, false),
-		Entry("neither present → no match",
+		Entry("neither present -> no match",
 			`INFO normal log line`, false),
-		Entry("empty string → no match",
+		Entry("empty string -> no match",
 			``, false),
 	)
 })
@@ -138,9 +138,9 @@ var _ = Describe("requestsSpyreResource", func() {
 		func(pod *corev1.Pod, want bool) {
 			Expect(requestsSpyreResource(pod)).To(Equal(want))
 		},
-		Entry("pod with ibm.com/spyre_gpu → accepted",
+		Entry("pod with ibm.com/spyre_gpu -> accepted",
 			spyrePod(corev1.PodRunning, nil), true),
-		Entry("pod with no ibm.com/spyre_* resource → rejected",
+		Entry("pod with no ibm.com/spyre_* resource -> rejected",
 			&corev1.Pod{
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -150,7 +150,7 @@ var _ = Describe("requestsSpyreResource", func() {
 					},
 				},
 			}, false),
-		Entry("pod with no resource requests → rejected",
+		Entry("pod with no resource requests -> rejected",
 			&corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: WorkerContainerName}}}}, false),
 	)
 })
@@ -164,15 +164,15 @@ var _ = Describe("isFailedOrCrashLooping", func() {
 		func(pod *corev1.Pod, want bool) {
 			Expect(isFailedOrCrashLooping(pod)).To(Equal(want))
 		},
-		Entry("Failed phase → accepted",
+		Entry("Failed phase -> accepted",
 			spyrePod(corev1.PodFailed, nil), true),
-		Entry("CrashLoopBackOff container → accepted",
+		Entry("CrashLoopBackOff container -> accepted",
 			spyrePod(corev1.PodRunning, []corev1.ContainerStatus{crashStatus(WorkerContainerName)}), true),
-		Entry("Running phase, no crash → rejected",
+		Entry("Running phase, no crash -> rejected",
 			spyrePod(corev1.PodRunning, nil), false),
-		Entry("Pending phase, no crash → rejected",
+		Entry("Pending phase, no crash -> rejected",
 			spyrePod(corev1.PodPending, nil), false),
-		Entry("Succeeded phase → rejected",
+		Entry("Succeeded phase -> rejected",
 			spyrePod(corev1.PodSucceeded, nil), false),
 	)
 })
@@ -255,19 +255,19 @@ var _ = DescribeTable("RASReporter.scanLines",
 		Expect(gotAddrs).To(ConsistOf(wantAddrs))
 	},
 
-	Entry("SEN line then RAS error → error recorded",
+	Entry("SEN line then RAS error -> error recorded",
 		strings.Join([]string{senLine, rasLine}, "\n"),
 		[]string{TestPCIAddress},
 	),
-	Entry("RAS error with no prior SEN line → nothing recorded",
+	Entry("RAS error with no prior SEN line -> nothing recorded",
 		rasLine,
 		[]string{},
 	),
-	Entry("SEN line then non-RAS line → nothing recorded",
+	Entry("SEN line then non-RAS line -> nothing recorded",
 		strings.Join([]string{senLine, otherLine}, "\n"),
 		[]string{},
 	),
-	Entry("two SEN+RAS pairs → both addresses recorded",
+	Entry("two SEN+RAS pairs -> both addresses recorded",
 		strings.Join([]string{
 			senLine,
 			rasLine,
@@ -276,18 +276,18 @@ var _ = DescribeTable("RASReporter.scanLines",
 		}, "\n"),
 		[]string{TestPCIAddress, "0000:3f:00.0"},
 	),
-	Entry("empty log → nothing recorded",
+	Entry("empty log -> nothing recorded",
 		"",
 		[]string{},
 	),
-	Entry("ras_timeout_log.txt — real crash log → 0000:1a:00.0 recorded",
+	Entry("ras_timeout_log.txt -- real crash log -> 0000:1a:00.0 recorded",
 		"file:testdata/ras_timeout_log.txt",
 		[]string{TestPCIAddress},
 	),
 )
 
 // ---------------------------------------------------------------------------
-// Merge integration — RASReporter priority behaviour
+// Merge integration -- RASReporter priority behaviour
 // ---------------------------------------------------------------------------
 
 var _ = DescribeTable("Merge with RASReporter",
@@ -320,7 +320,7 @@ var _ = DescribeTable("Merge with RASReporter",
 		}
 	},
 
-	Entry("empty RASReporter + lspci ONLINE → ONLINE from lspci",
+	Entry("empty RASReporter + lspci ONLINE -> ONLINE from lspci",
 		mergeTC{
 			reporters: []types.Reporter{
 				&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
@@ -333,7 +333,7 @@ var _ = DescribeTable("Merge with RASReporter",
 			wantState:  pb.DEVICE_STATE_ONLINE,
 		},
 	),
-	Entry("RASReporter IN_ERROR + lspci ONLINE for same address → RAS wins",
+	Entry("RASReporter IN_ERROR + lspci ONLINE for same address -> RAS wins",
 		func() mergeTC {
 			r := NewRASReporter()
 			r.addRASError(TestPCIAddress)
@@ -351,7 +351,7 @@ var _ = DescribeTable("Merge with RASReporter",
 			}
 		}(),
 	),
-	Entry("RASReporter IN_ERROR + cardmgmt IN_ERROR for same address → RAS wins (higher priority)",
+	Entry("RASReporter IN_ERROR + cardmgmt IN_ERROR for same address -> RAS wins (higher priority)",
 		func() mergeTC {
 			r := NewRASReporter()
 			r.addRASError(TestPCIAddress)
@@ -374,7 +374,7 @@ var _ = DescribeTable("Merge with RASReporter",
 			}
 		}(),
 	),
-	Entry("RASReporter IN_ERROR for different address than lspci → both present",
+	Entry("RASReporter IN_ERROR for different address than lspci -> both present",
 		func() mergeTC {
 			r := NewRASReporter()
 			r.addRASError("0000:3f:00.0")
@@ -393,10 +393,112 @@ var _ = DescribeTable("Merge with RASReporter",
 			}
 		}(),
 	),
+
+	// ---------------------------------------------------------------------------
+	// Three-source Merge entries: lspci (1) + cardmgmt (5) + RAS (10) together
+	// ---------------------------------------------------------------------------
+
+	// RAS must beat both lspci and cardmgmt when all three report the same address.
+	Entry("all three sources: RAS IN_ERROR overrides lspci ONLINE and cardmgmt ONLINE",
+		func() mergeTC {
+			r := NewRASReporter()
+			r.addRASError(TestPCIAddress)
+			return mergeTC{
+				reporters: []types.Reporter{
+					&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					}},
+					&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
+					}},
+					r,
+				},
+				wantLen: 1,
+				wantByAddr: map[string]types.DeviceState{
+					TestPCIAddress: {Source: RASSource, State: pb.DEVICE_STATE_IN_ERROR},
+				},
+			}
+		}(),
+	),
+
+	// cardmgmt must beat lspci for addresses RAS doesn't know about.
+	Entry("all three sources: cardmgmt IN_ERROR overrides lspci ONLINE (no RAS entry for address)",
+		func() mergeTC {
+			r := NewRASReporter() // no errors recorded — RAS contributes nothing
+			return mergeTC{
+				reporters: []types.Reporter{
+					&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					}},
+					&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
+					}},
+					r,
+				},
+				wantLen: 1,
+				wantByAddr: map[string]types.DeviceState{
+					TestPCIAddress: {Source: CardmgmtSource, State: pb.DEVICE_STATE_IN_ERROR},
+				},
+			}
+		}(),
+	),
+
+	// All three sources report on non-overlapping addresses; all must appear.
+	Entry("all three sources: non-overlapping addresses — all three entries present",
+		func() mergeTC {
+			r := NewRASReporter()
+			r.addRASError(TestPCIAddress3)
+			return mergeTC{
+				reporters: []types.Reporter{
+					&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					}},
+					&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress2, State: pb.DEVICE_STATE_IN_ERROR, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
+					}},
+					r,
+				},
+				wantLen: 3,
+				wantByAddr: map[string]types.DeviceState{
+					TestPCIAddress:  {Source: LsPCISource, State: pb.DEVICE_STATE_ONLINE},
+					TestPCIAddress2: {Source: CardmgmtSource, State: pb.DEVICE_STATE_IN_ERROR},
+					TestPCIAddress3: {Source: RASSource, State: pb.DEVICE_STATE_IN_ERROR},
+				},
+			}
+		}(),
+	),
+
+	// lspci marks a device IN_ERROR; cardmgmt and RAS both say ONLINE (hypothetically).
+	// The sticky-unhealthy rule means lspci's ERROR must be preserved regardless of the
+	// higher-priority sources attempting to promote it to ONLINE.
+	Entry("all three sources: sticky-unhealthy — lspci ERROR cannot be promoted by cardmgmt or RAS ONLINE",
+		func() mergeTC {
+			// RAS carries no errors, so it contributes an ONLINE state for the same address.
+			// We inject the RAS online state via a stub to simulate a reporter that knows
+			// the device is healthy — the merge rule must still keep the ERROR.
+			return mergeTC{
+				reporters: []types.Reporter{
+					&stubReporter{name: LsPCISource, priority: types.PriorityLSPCI, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_IN_ERROR, Source: LsPCISource, Priority: types.PriorityLSPCI},
+					}},
+					&stubReporter{name: CardmgmtSource, priority: types.PriorityCardmgmt, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: CardmgmtSource, Priority: types.PriorityCardmgmt}, // nolint:lll
+					}},
+					&stubReporter{name: RASSource, priority: types.PriorityRAS, states: []types.DeviceState{
+						{PciAddress: TestPCIAddress, State: pb.DEVICE_STATE_ONLINE, Source: RASSource, Priority: types.PriorityRAS},
+					}},
+				},
+				wantLen: 1,
+				wantByAddr: map[string]types.DeviceState{
+					TestPCIAddress: {Source: LsPCISource, State: pb.DEVICE_STATE_IN_ERROR},
+				},
+			}
+		}(),
+	),
 )
 
 // ---------------------------------------------------------------------------
-// Pod watcher lifecycle — DescribeTable (uses fake kube client)
+// Pod watcher lifecycle -- DescribeTable (uses fake kube client)
 // ---------------------------------------------------------------------------
 
 // watcherTC is the input/output shape for a single watchPods lifecycle entry.
@@ -448,7 +550,7 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 	},
 
 	// Event-type filtering
-	Entry("DELETED event → nothing recorded, not disabled",
+	Entry("DELETED event -> nothing recorded, not disabled",
 		watcherTC{
 			setupWatch: func(fw *k8swatch.FakeWatcher) {
 				fw.Delete(spyrePodNamed("pod-deleted", corev1.PodFailed, nil))
@@ -459,7 +561,7 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 			wantAddrs:    []string{},
 		},
 	),
-	Entry("MODIFIED Running pod (no crash) → nothing recorded",
+	Entry("MODIFIED Running pod (no crash) -> nothing recorded",
 		watcherTC{
 			setupWatch: func(fw *k8swatch.FakeWatcher) {
 				fw.Modify(spyrePodNamed("pod-modified", corev1.PodRunning, nil))
@@ -470,7 +572,7 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 			wantAddrs:    []string{},
 		},
 	),
-	Entry("ADDED pod without ibm.com/spyre_* resource → nothing recorded",
+	Entry("ADDED pod without ibm.com/spyre_* resource -> nothing recorded",
 		watcherTC{
 			setupWatch: func(fw *k8swatch.FakeWatcher) {
 				plain := &corev1.Pod{}
@@ -486,7 +588,7 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 			wantAddrs:    []string{},
 		},
 	),
-	Entry("ADDED Failed spyre pod → GetLogs called (fake stub has no SEN/RAS → nothing recorded)",
+	Entry("ADDED Failed spyre pod -> GetLogs called (fake stub has no SEN/RAS -> nothing recorded)",
 		watcherTC{
 			setupWatch: func(fw *k8swatch.FakeWatcher) {
 				fw.Add(spyrePodNamed("pod-added-failed", corev1.PodFailed, nil))
@@ -497,7 +599,7 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 			wantAddrs:    []string{},
 		},
 	),
-	Entry("ADDED CrashLoopBackOff spyre pod → GetLogs called (fake stub, nothing recorded)",
+	Entry("ADDED CrashLoopBackOff spyre pod -> GetLogs called (fake stub, nothing recorded)",
 		watcherTC{
 			setupWatch: func(fw *k8swatch.FakeWatcher) {
 				fw.Add(spyrePodNamed("pod-added-crash", corev1.PodRunning,
@@ -511,21 +613,21 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 	),
 
 	// Watch-level permission errors
-	Entry("Watch returns 403 Forbidden → disabled=true",
+	Entry("Watch returns 403 Forbidden -> disabled=true",
 		watcherTC{
 			watchErr:     k8serrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "", nil),
 			wantDisabled: true,
 			wantAddrs:    []string{},
 		},
 	),
-	Entry("Watch returns 401 Unauthorized → disabled=true",
+	Entry("Watch returns 401 Unauthorized -> disabled=true",
 		watcherTC{
 			watchErr:     k8serrors.NewUnauthorized("not authorised"),
 			wantDisabled: true,
 			wantAddrs:    []string{},
 		},
 	),
-	Entry("Watch returns generic error → not disabled, watchPods returns",
+	Entry("Watch returns generic error -> not disabled, watchPods returns",
 		watcherTC{
 			watchErr:     fmt.Errorf("connection refused"),
 			wantDisabled: false,
@@ -533,9 +635,9 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 		},
 	),
 
-	// Context cancellation — cancel is called before watcher emits anything;
+	// Context cancellation -- cancel is called before watcher emits anything;
 	// close the FakeWatcher so the select unblocks and sees ctx.Done.
-	Entry("ctx cancelled → watchPods exits cleanly, nothing recorded",
+	Entry("ctx cancelled -> watchPods exits cleanly, nothing recorded",
 		watcherTC{
 			setupWatch: func(fw *k8swatch.FakeWatcher) {
 				// Don't send events; the test's defer cancel() will fire,
@@ -584,7 +686,7 @@ var _ = DescribeTable("RASReporter.Start retry loop",
 		Expect(calls.Load()).To(BeNumerically("<=", wantMaxCalls), "max Watch calls")
 	},
 
-	Entry("Watch 403 → disabled after first call, no retries",
+	Entry("Watch 403 -> disabled after first call, no retries",
 		func(calls *atomic.Int64) k8stesting.WatchReactionFunc {
 			return func(_ k8stesting.Action) (bool, k8swatch.Interface, error) {
 				calls.Add(1)
@@ -593,7 +695,7 @@ var _ = DescribeTable("RASReporter.Start retry loop",
 		},
 		true, 1, 1,
 	),
-	Entry("Watch 401 → disabled after first call, no retries",
+	Entry("Watch 401 -> disabled after first call, no retries",
 		func(calls *atomic.Int64) k8stesting.WatchReactionFunc {
 			return func(_ k8stesting.Action) (bool, k8swatch.Interface, error) {
 				calls.Add(1)
@@ -602,7 +704,7 @@ var _ = DescribeTable("RASReporter.Start retry loop",
 		},
 		true, 1, 1,
 	),
-	Entry("Watch channel immediately closed → retries multiple times until ctx expires",
+	Entry("Watch channel immediately closed -> retries multiple times until ctx expires",
 		func(calls *atomic.Int64) k8stesting.WatchReactionFunc {
 			return func(_ k8stesting.Action) (bool, k8swatch.Interface, error) {
 				calls.Add(1)
@@ -651,7 +753,7 @@ var _ = Describe("RASReporter.SetAllowedNamespaces", func() {
 })
 
 // ---------------------------------------------------------------------------
-// watchPods — namespace filter
+// watchPods -- namespace filter
 // ---------------------------------------------------------------------------
 
 var _ = DescribeTable("RASReporter.watchPods namespace filter",
@@ -674,7 +776,7 @@ var _ = DescribeTable("RASReporter.watchPods namespace filter",
 		pod.Namespace = podNS
 		pod.Spec.NodeName = nodeName
 
-		// Track whether GetLogs was called — that proves fetchAndScanLogs ran.
+		// Track whether GetLogs was called -- that proves fetchAndScanLogs ran.
 		var logsCalled atomic.Bool
 		client.PrependReactor("get", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
 			logsCalled.Store(true)
@@ -692,16 +794,16 @@ var _ = DescribeTable("RASReporter.watchPods namespace filter",
 		Expect(logsCalled.Load()).To(Equal(wantScanned), "GetLogs called")
 	},
 
-	Entry("no allowlist → pod in any namespace is scanned",
+	Entry("no allowlist -> pod in any namespace is scanned",
 		[]string{}, "other-ns", true,
 	),
-	Entry("allowlist set, pod namespace matches → scanned",
+	Entry("allowlist set, pod namespace matches -> scanned",
 		[]string{"trusted"}, "trusted", true,
 	),
-	Entry("allowlist set, pod namespace does not match → skipped",
+	Entry("allowlist set, pod namespace does not match -> skipped",
 		[]string{"trusted"}, "untrusted", false,
 	),
-	Entry("allowlist with multiple namespaces, pod in second → scanned",
+	Entry("allowlist with multiple namespaces, pod in second -> scanned",
 		[]string{"ns-a", "ns-b"}, "ns-b", true,
 	),
 )

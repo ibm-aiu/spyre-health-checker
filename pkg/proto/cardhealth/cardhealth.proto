@@ -1,0 +1,68 @@
+// Copyright (c) 2026 IBM Corp.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Card Health gRPC API
+// This proto defines a small gRPC interface for the Health API wrapper that
+// wraps a subset of a single RPyC-based card management worker running on
+// the same node/Pod. There is no `node_name` field on any message: this
+// wrapper always talks to exactly one, co-located worker.
+
+syntax = "proto3";
+
+package cardhealth;
+
+option go_package = "github.com/ibm-aiu/spyre-health-checker/pkg/cardhealth";
+
+// Card Health Service
+service CardHealth {
+  // Returns a simplified healthy/unhealthy status for a card, derived from
+  // the worker's getCardStatus() result.
+  rpc GetCardHealth(GetCardHealthRequest) returns (GetCardHealthResponse);
+
+  // Flight logs operations
+  rpc CollectFlightLogsForCard(CollectFlightLogsRequest) returns (CollectFlightLogsResponse);
+  rpc GetFlightLogResultsForCard(GetFlightLogResultsRequest) returns (GetFlightLogResultsResponse);
+}
+
+// Common message types
+message MessageResult {
+  string category = 1;
+  string message = 2;
+}
+
+message ErrorDetails {
+  string error_code = 1;
+  string error_message = 2;
+}
+
+// GetCardHealth
+message GetCardHealthRequest {
+  string pci_slot = 1;
+}
+
+message GetCardHealthResponse {
+  // Simplified status: "healthy" or "unhealthy".
+  string health = 1;
+  ErrorDetails error = 2;
+}
+
+// CollectFlightLogsForCard
+message CollectFlightLogsRequest {
+  string pci_slot = 1;
+  map<string, string> kwargs = 2;
+}
+
+message CollectFlightLogsResponse {
+  MessageResult result = 1;
+  ErrorDetails error = 2;
+}
+
+// GetFlightLogResultsForCard
+message GetFlightLogResultsRequest {
+  string pci_slot = 1;
+}
+
+message GetFlightLogResultsResponse {
+  repeated string results = 1;
+  ErrorDetails error = 2;
+}

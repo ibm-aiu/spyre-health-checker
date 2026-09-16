@@ -11,8 +11,8 @@
 //
 // Priority hierarchy (highest wins on conflict):
 //
-//	CardmgmtReporter — priority  5  (card management service)
-//	LSPCIReporter    — priority  1  (hardware lspci scan)
+//	CardmgmtReporter -- priority  5  (card management service)
+//	LSPCIReporter    -- priority  1  (hardware lspci scan)
 package reporter
 
 import (

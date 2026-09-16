@@ -267,7 +267,7 @@ func createTestCertificates() error {
 		return err
 	}
 
-	// Primary CA — also used as the server cert (self-signed).
+	// Primary CA -- also used as the server cert (self-signed).
 	TestCert = TestCertDir + "/tls.crt"
 	TestKey = TestCertDir + "/tls.key"
 	caCert, caKey, err := writeCertPair(TestCert, TestKey, "test-server", 1, "Test Org")
@@ -282,7 +282,7 @@ func createTestCertificates() error {
 		return err
 	}
 
-	// Signed by the trusted CA but carries no Organisation — TLS handshake
+	// Signed by the trusted CA but carries no Organisation -- TLS handshake
 	// passes (cert is trusted), but the stream interceptor returns Unauthenticated.
 	NoOrgCert = TestCertDir + "/no-org.crt"
 	NoOrgKey = TestCertDir + "/no-org.key"
@@ -294,8 +294,8 @@ func createTestCertificates() error {
 }
 
 // NewMTLSGrpcConn creates a gRPC client connection with full mTLS:
-//   - clientCertPath / clientKeyPath  – the client's own certificate and key
-//   - caCertPath                      – the CA whose cert the client uses to
+//   - clientCertPath / clientKeyPath  - the client's own certificate and key
+//   - caCertPath                      - the CA whose cert the client uses to
 //     verify the server
 func NewMTLSGrpcConn(socket, clientCertPath, clientKeyPath, caCertPath string) (*grpc.ClientConn, error) {
 	cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)

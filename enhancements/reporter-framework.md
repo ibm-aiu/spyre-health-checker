@@ -68,8 +68,8 @@ Defined in [`pkg/types/types.go`](../pkg/types/types.go):
 
 | Constant | Value | Reporter |
 |---|---|---|
-| `PriorityLSPCI` | 1 | `LSPCIReporter` — hardware scan (lowest) |
-| `PriorityCardmgmt` | 5 | `CardmgmtReporter` — card management service |
+| `PriorityLSPCI` | 1 | `LSPCIReporter` -- hardware scan (lowest) |
+| `PriorityCardmgmt` | 5 | `CardmgmtReporter` -- card management service |
 
 Higher numeric value = higher authority.
 
@@ -101,7 +101,7 @@ Priority: `PriorityCardmgmt = 5`.
 
 ---
 
-## `Merge` — Conflict Resolution
+## `Merge` -- Conflict Resolution
 
 ```go
 func Merge(reporters []types.Reporter) ([]types.DeviceState, error)
@@ -120,7 +120,7 @@ existing entry already in the map:
 | `ONLINE` | `IN_ERROR` | **Yes** | Higher authority marks device unhealthy. |
 | `ONLINE` | `ONLINE` | **Yes** | Higher authority confirms healthy; source/priority updated. |
 | `IN_ERROR` | `IN_ERROR` | **Yes** | Higher authority updates error attribution. |
-| `IN_ERROR` | `ONLINE` | **No** | Unhealthy is sticky — no reporter can silently clear an error. |
+| `IN_ERROR` | `ONLINE` | **No** | Unhealthy is sticky -- no reporter can silently clear an error. |
 
 The rule expressed in code ([`reporter.go:71`](../internal/reporter/reporter.go:71)):
 
@@ -157,14 +157,14 @@ published.
 
 ```
 internal/reporter/
-├── reporter.go          # stamp(), Merge()
-├── lspci.go             # LSPCIReporter + lspci output parser
-├── cardmgmt.go          # CardmgmtReporter, SimplifiedDevice, CardManagement
-├── reporter_test.go     # Merge table-driven tests
-├── lspci_test.go        # parseLSPCI + stamp + Merge smoke tests
-├── reporter_suite_test.go
-└── testdata/
-    └── lspci_input.txt  # sample lspci -vvvnn output used by lspci_test.go
++--- reporter.go          # stamp(), Merge()
++--- lspci.go             # LSPCIReporter + lspci output parser
++--- cardmgmt.go          # CardmgmtReporter, SimplifiedDevice, CardManagement
++--- reporter_test.go     # Merge table-driven tests
++--- lspci_test.go        # parseLSPCI + stamp + Merge smoke tests
++--- reporter_suite_test.go
+`--- testdata/
+    `--- lspci_input.txt  # sample lspci -vvvnn output used by lspci_test.go
 
 pkg/types/types.go       # Reporter interface, DeviceState, priority constants
 ```
@@ -188,9 +188,9 @@ pkg/types/types.go       # Reporter interface, DeviceState, priority constants
 Tests live entirely inside `package reporter` (white-box) and are driven by
 [Ginkgo v2](https://onsi.github.io/ginkgo/) + Gomega.
 
-### `reporter_test.go` — `DescribeTable` coverage
+### `reporter_test.go` -- `DescribeTable` coverage
 
-**`Merge`** — all entries use the shared `mergeTC` struct so data and expectations
+**`Merge`** -- all entries use the shared `mergeTC` struct so data and expectations
 are co-located.
 
 | Entry | Scenario |
@@ -198,24 +198,24 @@ are co-located.
 | no reporters | Empty result, no error |
 | single reporter, no states | Empty result |
 | single reporter, two devices | Both returned |
-| `error→online` | Existing=ERROR, incoming=ONLINE — **not overridden** (sticky) |
-| `online→error` | Existing=ONLINE, incoming=ERROR — **overridden** |
-| `online→online` | Both ONLINE, higher priority — **overridden** |
-| `error→error` | Both ERROR, higher priority — **overridden** |
+| `error->online` | Existing=ERROR, incoming=ONLINE -- **not overridden** (sticky) |
+| `online->error` | Existing=ONLINE, incoming=ERROR -- **overridden** |
+| `online->online` | Both ONLINE, higher priority -- **overridden** |
+| `error->error` | Both ERROR, higher priority -- **overridden** |
 | equal priority | First encountered kept regardless of state |
 | non-conflicting addresses | All devices present |
 | partial failure | Error accumulated; healthy reporter's results still returned |
 | all reporters fail | Error returned, result empty |
 | all four transitions, four devices | `wantByAddr` map asserts per-address source and state |
 
-### `lspci_test.go` — parser and smoke tests
+### `lspci_test.go` -- parser and smoke tests
 
 | Test | What is verified |
 |---|---|
-| `parseLSPCI` | 14 supported devices parsed; unsupported VDIDs excluded; revision `ff` → `IN_ERROR`; VF VDID → `DEVICE_TYPE_VF` |
+| `parseLSPCI` | 14 supported devices parsed; unsupported VDIDs excluded; revision `ff` -> `IN_ERROR`; VF VDID -> `DEVICE_TYPE_VF` |
 | `stamp` | All entries get `Source="lspci"` and `Priority=PriorityLSPCI` |
-| `Merge` smoke — `online→error` | `CardmgmtReporter` (priority 5) overrides `LSPCIReporter` (priority 1) when existing is ONLINE |
-| `Merge` smoke — non-conflicting | Two reporters on different addresses → both present |
+| `Merge` smoke -- `online->error` | `CardmgmtReporter` (priority 5) overrides `LSPCIReporter` (priority 1) when existing is ONLINE |
+| `Merge` smoke -- non-conflicting | Two reporters on different addresses -> both present |
 
 Run the full suite:
 

@@ -35,15 +35,11 @@ func getEnvOrDefault(key, defaultValue string) string {
 }
 
 // buildReporters creates a slice of reporters from a comma-separated string.
-// rasReporter is always appended unconditionally — an empty RASReporter
-// contributes nothing to Merge() and requires no flag to enable.
-//
-// When PSEUDO_DEVICE_MODE=1 the hardware reporters (lspci, cardmgmt) are
-// replaced by PseudoReporter so that the same reporter framework and merge
-// logic is used in both real and pseudo modes. RASReporter is still included
-// so that RAS errors detected by the pod watcher override pseudo-healthy states
-// exactly as they would in production.
-func buildReporters(reporterNames string, rasReporter *reporter.RASReporter) []types.Reporter {
+// rasReporter and cardHealthClient must be fully configured before this call.
+// When PSEUDO_DEVICE_MODE=1, hardware reporters are replaced by PseudoReporter;
+// RASReporter is always appended unconditionally regardless of mode.
+func buildReporters(reporterNames string, rasReporter *reporter.RASReporter,
+	cardHealthClient *reporter.CardHealthClient) []types.Reporter {
 	if utils.IsPseudoDeviceMode() {
 		return []types.Reporter{&reporter.PseudoReporter{}, rasReporter}
 	}
@@ -55,9 +51,21 @@ func buildReporters(reporterNames string, rasReporter *reporter.RASReporter) []t
 		case "lspci":
 			reporters = append(reporters, &reporter.LSPCIReporter{})
 		case "cardmgmt":
-			// CardmgmtReporter requires a CollectFn to be implemented
-			// for now we stub it
-			reporters = append(reporters, &reporter.CardmgmtReporter{})
+			// CollectFn: discover slots via lspci, then query the sidecar.
+			lspci := &reporter.LSPCIReporter{}
+			reporters = append(reporters, &reporter.CardmgmtReporter{
+				CollectFn: func() ([]types.DeviceState, error) {
+					discovered, err := lspci.Collect()
+					if err != nil || len(discovered) == 0 {
+						return nil, err
+					}
+					slots := make([]string, len(discovered))
+					for i, s := range discovered {
+						slots[i] = s.PciAddress
+					}
+					return cardHealthClient.CollectForSlots(slots)
+				},
+			})
 		}
 	}
 	if len(reporters) == 0 {
@@ -69,6 +77,7 @@ func buildReporters(reporterNames string, rasReporter *reporter.RASReporter) []t
 }
 
 var (
+	debug  = flag.Bool("debug", false, "Enable per-slot gRPC call logging for the cardmgmt reporter (stdout)")
 	socket = flag.String("socket", "/usr/local/etc/device-plugins/health/checker.sock", "The server unix socket")
 	timer  = flag.String(
 		"timer",
@@ -102,6 +111,16 @@ var (
 		"",
 		"Comma-separated list of namespaces the RAS pod watcher trusts. Empty (default) watches all namespaces.",
 	)
+	cardHealthSocket = flag.String(
+		"cardhealth-socket",
+		getEnvOrDefault("CARDHEALTH_GRPC_SOCKET", "/var/run/cardmgmt-health-check-api/health-check-api.sock"),
+		"UNIX socket path for the aiu-cardmgmt-health-api sidecar (can be set via CARDHEALTH_GRPC_SOCKET env var)",
+	)
+	cardHealthServerName = flag.String(
+		"cardhealth-server-name",
+		getEnvOrDefault("CARDHEALTH_TLS_SERVER_NAME", "spyre-components"),
+		"TLS server name for the cardmgmt sidecar certificate (can be set via CARDHEALTH_TLS_SERVER_NAME env var)",
+	)
 )
 
 func main() {
@@ -119,7 +138,14 @@ func main() {
 		rasReporter.SetAllowedNamespaces(nsList)
 		logger.Infof("RAS pod watcher namespace allowlist: %v", nsList)
 	}
-	reporters := buildReporters(*enabledReporters, rasReporter)
+
+	cardHealthClient := reporter.NewCardHealthClient(*cardHealthSocket, *tlsCert, *tlsKey, *tlsCA, *cardHealthServerName)
+	if *debug {
+		cardHealthClient.SetDebug(true)
+		logger.Infof("cardmgmt reporter: per-slot debug logging enabled")
+	}
+
+	reporters := buildReporters(*enabledReporters, rasReporter, cardHealthClient)
 	logger.Infof("Enabled reporters: %v", *enabledReporters)
 	vitals := healthcheck.NewVitals(reporters)
 
@@ -140,7 +166,7 @@ func main() {
 	}
 
 	logger.Infof("Starting timer for periodic checks")
-	// Parse the repeat and invasive intervals to durations
+	// Parse the timer interval to a duration.
 	timer, err := utils.ParseInterval(*timer)
 	if err != nil {
 		logger.Errorf("Error parsing repeat interval: %v", err)
@@ -150,16 +176,11 @@ func main() {
 	}
 	defer s.Stop()
 
-	// Signal-aware context for the RAS pod watcher goroutine.
-	// defer cancel() is registered AFTER defer s.Stop() so it executes FIRST
-	// (LIFO), ensuring the watcher goroutine is cancelled before the server
-	// closes the update queue.
+	// defer cancel() registered after defer s.Stop(), so it runs first (LIFO).
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
-	// Start the RAS pod watcher if running inside a Kubernetes cluster.
-	// Failure to build the kube client is non-fatal — the health-checker
-	// continues to work; RASReporter.Collect() simply returns empty.
+	// Start the RAS pod watcher; non-fatal if not running in-cluster.
 	if cfg, err := rest.InClusterConfig(); err != nil {
 		logger.Warnf("RAS pod watcher disabled: not running in-cluster (%v)", err)
 	} else if kubeClient, err := kubernetes.NewForConfig(cfg); err != nil {

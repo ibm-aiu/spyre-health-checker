@@ -11,6 +11,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -36,17 +37,44 @@ func (r *LSPCIReporter) Priority() int { return types.PriorityLSPCI }
 // Collect executes lspci, parses the output, and stamps each entry with the
 // lspci source name and priority.
 func (r *LSPCIReporter) Collect() ([]types.DeviceState, error) {
-	out, err := exec.Command("sh", "-c", "lspci -vvvnn 2>/dev/null").CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("lspci reporter: %w", err)
+	// Fail early with a clear error if lspci is not on PATH.
+	if _, err := exec.LookPath("lspci"); err != nil {
+		return nil, fmt.Errorf("lspci reporter: lspci not found (%s): install lspci & pciutils: %w", pathEnv(), err)
 	}
+
+	// CombinedOutput captures stderr alongside stdout.
+	out, err := exec.Command("lspci", "-vvvnn").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("lspci reporter: lspci -vvvnn failed: %w\noutput: %s", err, string(out))
+	}
+
 	states := parseLSPCI(string(out))
+	if len(states) == 0 {
+		// Warn: distinguishes "no cards" from a format change.
+		lspciDebugLog("lspci succeeded but found no IBM Spyre devices in output (%d bytes)", len(out))
+	} else {
+		lspciDebugLog("lspci found %d Spyre device(s)", len(states))
+	}
+
 	stamp(states, r.Name(), r.Priority())
 	return states, nil
 }
 
+// pathEnv returns the current PATH for use in error messages.
+func pathEnv() string {
+	if p := os.Getenv("PATH"); p != "" {
+		return p
+	}
+	return "(PATH not set)"
+}
+
+// lspciDebugLog is a package-level hook for diagnostic output; override in tests.
+var lspciDebugLog = func(format string, args ...any) {
+	fmt.Printf("lspci-reporter: "+format+"\n", args...)
+}
+
 // ---------------------------------------------------------------------------
-// lspci output parser — private to this package
+// lspci output parser -- private to this package
 // ---------------------------------------------------------------------------
 
 type bitValue struct {

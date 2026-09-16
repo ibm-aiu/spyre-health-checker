@@ -11,12 +11,12 @@ import (
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 )
 
-// Reporter priority levels — higher value wins when multiple reporters provide
+// Reporter priority levels -- higher value wins when multiple reporters provide
 // data for the same device.
 const (
-	PriorityLSPCI    = 1  // lowest — simple hardware scan
-	PriorityCardmgmt = 5  // medium — card management service
-	PriorityRAS      = 10 // highest — RAS pod watcher (hardware error signal)
+	PriorityLSPCI    = 1  // lowest -- simple hardware scan
+	PriorityCardmgmt = 5  // medium -- card management service
+	PriorityRAS      = 10 // highest -- RAS pod watcher (hardware error signal)
 )
 
 // Reporter is the interface that every device-state source must implement.
