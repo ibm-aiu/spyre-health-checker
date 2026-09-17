@@ -25,7 +25,7 @@ func newDeviceStateGauge() *prometheus.GaugeVec {
 			Name:      "device_state",
 			Help:      "Current state for each Spyre device.",
 		},
-		[]string{"node", "deviceid", "devicetype", "state", "source"},
+		[]string{"node", "pci_address", "devicetype", "state", "source"},
 	)
 }
 
@@ -54,11 +54,11 @@ func UpdateDeviceMetrics(states []types.DeviceState) {
 
 	for _, s := range states {
 		SpyreDeviceState.With(prometheus.Labels{
-			"node":       node,
-			"deviceid":   s.PciAddress,
-			"devicetype": enumDeviceType(s.Type),
-			"state":      enumDeviceState(s.State),
-			"source":     s.Source,
+			"node":        node,
+			"pci_address": s.PciAddress,
+			"devicetype":  enumDeviceType(s.Type),
+			"state":       enumDeviceState(s.State),
+			"source":      s.Source,
 		}).Set(1)
 	}
 }

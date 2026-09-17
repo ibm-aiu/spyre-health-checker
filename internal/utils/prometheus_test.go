@@ -29,11 +29,11 @@ var _ = Describe("Prometheus metrics", func() {
 
 	var testRegistry *prometheus.Registry
 	var labels = prometheus.Labels{
-		"node":       "test",
-		"deviceid":   "0000:00:00.0",
-		"devicetype": "PF",
-		"state":      "ONLINE",
-		"source":     LsPCISource,
+		"node":        "test",
+		"pci_address": "0000:00:00.0",
+		"devicetype":  "PF",
+		"state":       "ONLINE",
+		"source":      LsPCISource,
 	}
 
 	// Helper function to find the device metric in the registry
@@ -160,7 +160,7 @@ var _ = Describe("Prometheus metrics", func() {
 			}
 
 			Expect(labelMap["node"]).To(Equal("test-node"))
-			Expect(labelMap["deviceid"]).To(Equal(TestPCIAddress))
+			Expect(labelMap["pci_address"]).To(Equal(TestPCIAddress))
 			Expect(labelMap["devicetype"]).To(Equal("PF"))
 			Expect(labelMap["state"]).To(Equal("ONLINE"))
 			Expect(labelMap["source"]).To(Equal(LsPCISource))
