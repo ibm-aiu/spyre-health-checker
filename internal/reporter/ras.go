@@ -40,6 +40,9 @@ var senPCIRe = regexp.MustCompile(
 // plugin resources share.
 const spyreResourcePrefix = "ibm.com/spyre_"
 
+// spyreDRADriver is the DRA driver name of allocated Spyre devices.
+const spyreDRADriver = "spyre.ibm.com"
+
 // logTailLines is the maximum number of lines fetched from the tail of each
 // container log. Capping at 100 lines keeps memory use bounded; RAS errors
 // and the preceding SEN:VFIO:TYPE1 lines always appear near the end of the
@@ -187,7 +190,7 @@ func (r *RASReporter) watchPods(ctx context.Context, client kubernetes.Interface
 				continue
 			}
 			pod, ok := event.Object.(*corev1.Pod)
-			if !ok || r.skipPod(pod) {
+			if !ok || r.skipPod(ctx, client, pod) {
 				continue
 			}
 			r.log.Infof("RAS pod watcher: failed pod detected %s/%s (phase=%s)", pod.Namespace, pod.Name, pod.Status.Phase)
@@ -196,13 +199,62 @@ func (r *RASReporter) watchPods(ctx context.Context, client kubernetes.Interface
 	}
 }
 
-func (r *RASReporter) skipPod(pod *corev1.Pod) bool {
-	if !requestsSpyreResource(pod) || !isFailedOrCrashLooping(pod) {
+// skipPod returns true when the pod should not be log-scanned. A pod is scanned
+// when it is failed/crash-looping, in an allowed namespace, and uses Spyre
+// devices either through an ibm.com/spyre_* resource request (device plugin)
+// or through a spyre.ibm.com DRA ResourceClaim. The DRA check calls the API,
+// so it runs last and only when the resource-prefix check did not match.
+func (r *RASReporter) skipPod(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) bool {
+	if !isFailedOrCrashLooping(pod) {
 		return true
 	}
 	if r.allowedNamespaces != nil {
 		if _, ok := r.allowedNamespaces[pod.Namespace]; !ok {
 			return true
+		}
+	}
+	return !requestsSpyreResource(pod) && !r.usesSpyreDRAClaim(ctx, client, pod)
+}
+
+// podClaimNames returns the names of all ResourceClaims used by the pod:
+// claims referenced directly in spec.resourceClaims, claims generated from
+// templates (status.resourceClaimStatuses) and the claim generated for DRA-backed
+// extended resources (status.extendedResourceClaimStatus).
+func podClaimNames(pod *corev1.Pod) []string {
+	var names []string
+	for _, rc := range pod.Spec.ResourceClaims {
+		if rc.ResourceClaimName != nil {
+			names = append(names, *rc.ResourceClaimName)
+		}
+	}
+	for _, rcs := range pod.Status.ResourceClaimStatuses {
+		if rcs.ResourceClaimName != nil {
+			names = append(names, *rcs.ResourceClaimName)
+		}
+	}
+	if ext := pod.Status.ExtendedResourceClaimStatus; ext != nil && ext.ResourceClaimName != "" {
+		names = append(names, ext.ResourceClaimName)
+	}
+	return names
+}
+
+// usesSpyreDRAClaim returns true when any ResourceClaim used by the pod has an
+// allocated device whose driver is spyre.ibm.com. If a claim cannot be read
+// (e.g. deleted or forbidden) it is ignored and does not count as a Spyre claim.
+func (r *RASReporter) usesSpyreDRAClaim(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) bool {
+	for _, name := range podClaimNames(pod) {
+		claim, err := client.ResourceV1().ResourceClaims(pod.Namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			r.log.Warnf("RAS pod watcher: cannot get ResourceClaim %s/%s (%v)", pod.Namespace, name, err)
+			continue
+		}
+		if claim.Status.Allocation == nil {
+			continue
+		}
+		for _, res := range claim.Status.Allocation.Devices.Results {
+			if res.Driver == spyreDRADriver {
+				return true
+			}
 		}
 	}
 	return false

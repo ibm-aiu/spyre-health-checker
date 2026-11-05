@@ -19,8 +19,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8swatch "k8s.io/apimachinery/pkg/watch"
@@ -33,6 +35,8 @@ import (
 
 const (
 	WorkerContainerName = "worker"
+	testNamespace       = "default"
+	testClaimName       = "claim-a"
 )
 
 // ---------------------------------------------------------------------------
@@ -65,7 +69,7 @@ func spyrePod(phase corev1.PodPhase, containerStatuses []corev1.ContainerStatus)
 func spyrePodNamed(name string, phase corev1.PodPhase, statuses []corev1.ContainerStatus) *corev1.Pod {
 	p := spyrePod(phase, statuses)
 	p.Name = name
-	p.Namespace = "default"
+	p.Namespace = testNamespace
 	p.Spec.NodeName = nodeName
 	return p
 }
@@ -152,6 +156,88 @@ var _ = Describe("requestsSpyreResource", func() {
 			}, false),
 		Entry("pod with no resource requests -> rejected",
 			&corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: WorkerContainerName}}}}, false),
+	)
+})
+
+// ---------------------------------------------------------------------------
+// skipPod with DRA claims
+// ---------------------------------------------------------------------------
+
+var _ = Describe("skipPod with DRA claims", func() {
+	claim := func(driver string) *resourcev1.ResourceClaim {
+		return &resourcev1.ResourceClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: testClaimName, Namespace: testNamespace},
+			Status: resourcev1.ResourceClaimStatus{
+				Allocation: &resourcev1.AllocationResult{
+					Devices: resourcev1.DeviceAllocationResult{
+						Results: []resourcev1.DeviceRequestAllocationResult{{Driver: driver}},
+					},
+				},
+			},
+		}
+	}
+	directClaimPod := func() *corev1.Pod {
+		p := spyrePodNamed("p", corev1.PodFailed, nil)
+		n := testClaimName
+		p.Spec.ResourceClaims = []corev1.PodResourceClaim{{Name: "c", ResourceClaimName: &n}}
+		return p
+	}
+	templateClaimPod := func() *corev1.Pod {
+		p := spyrePodNamed("p", corev1.PodFailed, nil)
+		n := testClaimName
+		p.Spec.ResourceClaims = []corev1.PodResourceClaim{{Name: "c"}}
+		p.Status.ResourceClaimStatuses = []corev1.PodResourceClaimStatus{{Name: "c", ResourceClaimName: &n}}
+		return p
+	}
+	extendedClaimPod := func() *corev1.Pod {
+		p := spyrePodNamed("p", corev1.PodFailed, nil)
+		p.Status.ExtendedResourceClaimStatus = &corev1.PodExtendedResourceClaimStatus{ResourceClaimName: testClaimName}
+		return p
+	}
+
+	// noResource strips the ibm.com/spyre_* request so only a DRA claim can qualify the pod.
+	noResource := func(p *corev1.Pod) *corev1.Pod {
+		p.Spec.Containers[0].Resources = corev1.ResourceRequirements{}
+		return p
+	}
+	emptyClaim := &resourcev1.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: testClaimName, Namespace: testNamespace},
+	}
+	runningPod := func() *corev1.Pod {
+		p := noResource(directClaimPod())
+		p.Status.Phase = corev1.PodRunning
+		return p
+	}
+
+	DescribeTable("skipPod",
+		func(pod *corev1.Pod, claims []runtime.Object, want bool) {
+			client := fake.NewSimpleClientset(claims...)
+			Expect(NewRASReporter().skipPod(context.Background(), client, pod)).To(Equal(want))
+		},
+		// Scanned: spyre resource prefix OR spyre.ibm.com claim.
+		Entry("spyre resource request, no claims -> not skipped",
+			spyrePodNamed("p", corev1.PodFailed, nil), nil, false),
+		Entry("spyre resource request, claim from another driver -> not skipped",
+			directClaimPod(), []runtime.Object{claim("other.example.com")}, false),
+		Entry("spyre resource request and spyre.ibm.com claim -> not skipped",
+			directClaimPod(), []runtime.Object{claim("spyre.ibm.com")}, false),
+		Entry("no spyre resource, direct spyre.ibm.com claim -> not skipped",
+			noResource(directClaimPod()), []runtime.Object{claim("spyre.ibm.com")}, false),
+		Entry("no spyre resource, template-generated spyre.ibm.com claim -> not skipped",
+			noResource(templateClaimPod()), []runtime.Object{claim("spyre.ibm.com")}, false),
+		Entry("no spyre resource, extended-resource spyre.ibm.com claim -> not skipped",
+			noResource(extendedClaimPod()), []runtime.Object{claim("spyre.ibm.com")}, false),
+		// Skipped: neither condition holds, or the pod is not failed/crash-looping.
+		Entry("no spyre resource, claim from another driver -> skipped",
+			noResource(directClaimPod()), []runtime.Object{claim("other.example.com")}, true),
+		Entry("no spyre resource, claim not found -> skipped",
+			noResource(directClaimPod()), nil, true),
+		Entry("no spyre resource, claim without allocation -> skipped",
+			noResource(directClaimPod()), []runtime.Object{emptyClaim}, true),
+		Entry("no spyre resource and no claims -> skipped",
+			noResource(spyrePodNamed("p", corev1.PodFailed, nil)), nil, true),
+		Entry("spyre.ibm.com claim but pod running -> skipped",
+			runningPod(), []runtime.Object{claim("spyre.ibm.com")}, true),
 	)
 })
 
@@ -577,7 +663,7 @@ var _ = DescribeTable("RASReporter.watchPods lifecycle",
 			setupWatch: func(fw *k8swatch.FakeWatcher) {
 				plain := &corev1.Pod{}
 				plain.Name = "plain-pod"
-				plain.Namespace = "default"
+				plain.Namespace = testNamespace
 				plain.Spec.NodeName = nodeName
 				plain.Status.Phase = corev1.PodFailed
 				fw.Add(plain)
