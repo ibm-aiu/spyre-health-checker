@@ -16,12 +16,22 @@ The RAS reporter requires access to the Kubernetes API. The
 - apiGroups: [""]
   resources: ["pods", "pods/log"]
   verbs: ["get", "list", "watch"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims"]
+  verbs: ["get"]
 ```
 
 A `ClusterRole` is required because the pod watch uses a
 `fieldSelector: spec.nodeName=<NODE_NAME>` that spans all namespaces. `pods/log`
 must be listed separately -- Kubernetes treats log streaming as a distinct
 sub-resource.
+
+The `resourceclaims` rule lets the reporter recognise Spyre pods that obtain
+devices via DRA instead of an `ibm.com/spyre_*` resource request. A failed pod
+is scanned if it requests an `ibm.com/spyre_*` resource, or if any
+`ResourceClaim` it uses has an allocated device whose driver is
+`spyre.ibm.com`. Otherwise it is skipped. If a claim cannot be read (e.g.
+missing permission), it does not count as a Spyre claim.
 
 Without this `ClusterRole`, the watch call returns `403 Forbidden` at startup,
 the reporter logs a warning and permanently disables itself; all other reporters
