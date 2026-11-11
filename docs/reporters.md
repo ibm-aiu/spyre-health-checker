@@ -60,10 +60,34 @@ Priority: `PriorityLSPCI = 1`.
 The `cardmgmt` reporter calls `GetCardHealth` on the
 [`aiu-cardmgmt-health-api`](../../aiu-cardmgmt-health-api) sidecar (which runs
 in the cardmgmt worker Pod on the same node) for each PCI slot discovered by
-`lspci`. It maps the sidecar's `"healthy"` / `"unhealthy"` response to
-`DEVICE_STATE_ONLINE` / `DEVICE_STATE_IN_ERROR`.
+`lspci`, and maps the response to `DEVICE_STATE_ONLINE` / `DEVICE_STATE_IN_ERROR`.
+Only the physical functions (PFs) are queried, because card management tracks PFs only;
+each VF takes the state of the PF in the same PCI slot (function 0).
 
 Priority: `PriorityCardmgmt = 5`.
+
+**Sidecar responses.** The `health` field of `GetCardHealth` is mapped as follows. Both
+generations of the sidecar are supported:
+
+| `health` | Sidecar | Meaning | Device state |
+|---|---|---|---|
+| `healthy` | 0.0.4 and earlier | card online | `ONLINE` |
+| `unhealthy` | 0.0.4 and earlier | any other status (no detail) | `IN_ERROR` |
+| `online` | 0.0.5 and later | PF booted and privileged VF opened | `ONLINE` |
+| `offline` | 0.0.5 and later | PF offline | `OFFLINE` |
+| `starting` | 0.0.5 and later | boot in progress | `BOOTING` |
+| `pfcheck` | 0.0.5 and later | boot step: PF being checked | `BOOTING` |
+| `pfbooted` | 0.0.5 and later | boot step: PF booted, privileged VF not yet opened | `BOOTING` |
+| `pf-quiescing` | 0.0.5 and later | PF being quiesced | `SHUTTING_DOWN` |
+| `failed` | 0.0.5 and later | PF or privileged VF failed | `IN_ERROR` |
+| `na` | 0.0.5 and later | card management has no status for the slot | `UNSPECIFIED` |
+| any other value | -- | not known to this version | `UNSPECIFIED` |
+
+Only `healthy` and `online` are `ONLINE`: a card that is not fully up is never offered to a
+workload, whichever of the other states it is in. `RUNNING_DIAGNOSTICS` is not produced by this
+reporter because card management does not report a matching status. `REMOVED` is set by the health
+checker itself when a device disappears. A slot whose call fails (RPC or sidecar error code) is
+skipped: the other reporters decide for it.
 
 **Flags / environment variables:**
 
