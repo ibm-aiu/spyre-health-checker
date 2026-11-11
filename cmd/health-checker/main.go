@@ -59,11 +59,12 @@ func buildReporters(reporterNames string, rasReporter *reporter.RASReporter,
 					if err != nil || len(discovered) == 0 {
 						return nil, err
 					}
-					slots := make([]string, len(discovered))
-					for i, s := range discovered {
-						slots[i] = s.PciAddress
+					// Only PFs are known to card management; VFs take the state of their PF.
+					pfStates, err := cardHealthClient.CollectForSlots(reporter.PFSlots(discovered))
+					if err != nil {
+						return nil, err
 					}
-					return cardHealthClient.CollectForSlots(slots)
+					return reporter.WithVFStates(discovered, pfStates), nil
 				},
 			})
 		}

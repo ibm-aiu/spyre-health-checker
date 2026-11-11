@@ -96,7 +96,34 @@ const (
 	slotUnhealthy = "0000:02:00.0"
 	slotErrorCode = "0000:03:00.0"
 	slotUnknown   = "0000:ff:00.0"
+	slotOnline    = "0000:04:00.0" // sidecar 0.0.5 and later: raw card management status
+	slotOffline   = "0000:05:00.0"
+	slotFailed    = "0000:06:00.0"
+	slotNA        = "0000:07:00.0"
 )
+
+var _ = Describe("mapCardStatus", func() {
+	DescribeTable("maps the Health value of the sidecar to a device state",
+		func(health string, expectedState pb.DEVICE_STATE) {
+			Expect(mapCardStatus(health)).To(Equal(expectedState))
+		},
+		// sidecar 0.0.4 and earlier
+		Entry("healthy (0.0.4)", "healthy", pb.DEVICE_STATE_ONLINE),
+		Entry("unhealthy (0.0.4)", "unhealthy", pb.DEVICE_STATE_IN_ERROR),
+		// sidecar 0.0.5 and later: card management status as is
+		Entry("online", "online", pb.DEVICE_STATE_ONLINE),
+		Entry("offline", "offline", pb.DEVICE_STATE_OFFLINE),
+		Entry("starting", "starting", pb.DEVICE_STATE_BOOTING),
+		Entry("boot step pfcheck", "pfcheck", pb.DEVICE_STATE_BOOTING),
+		Entry("boot step pfbooted", "pfbooted", pb.DEVICE_STATE_BOOTING),
+		Entry("pf-quiescing", "pf-quiescing", pb.DEVICE_STATE_SHUTTING_DOWN),
+		Entry("failed", "failed", pb.DEVICE_STATE_IN_ERROR),
+		Entry("na", "na", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
+		Entry("an unknown value", "something-new", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
+		Entry("an empty value", "", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
+		Entry("a value with other case (Online)", "Online", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
+	)
+})
 
 var _ = Describe("CardHealthClient", func() {
 	Describe("CollectForSlots", func() {
@@ -109,6 +136,10 @@ var _ = Describe("CardHealthClient", func() {
 			sockPath, stop = startFakeServer(map[string]*cardhealth.GetCardHealthResponse{
 				slotHealthy:   {Health: "healthy"},
 				slotUnhealthy: {Health: "unhealthy"},
+				slotOnline:    {Health: "online"},
+				slotOffline:   {Health: "offline"},
+				slotFailed:    {Health: "failed"},
+				slotNA:        {Health: "na"},
 				slotErrorCode: {
 					Error: &cardhealth.ErrorDetails{ErrorCode: "CALL_FAILED", ErrorMessage: "worker error"},
 				},
@@ -133,6 +164,35 @@ var _ = Describe("CardHealthClient", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(states).To(HaveLen(1))
 			Expect(states[0].State).To(Equal(pb.DEVICE_STATE_IN_ERROR))
+		})
+
+		It("maps the raw status online (sidecar 0.0.5 and later) to DEVICE_STATE_ONLINE", func() {
+			client := newTestClient(sockPath)
+			states, err := client.CollectForSlots([]string{slotOnline})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].State).To(Equal(pb.DEVICE_STATE_ONLINE))
+		})
+
+		It("maps the raw status offline to DEVICE_STATE_OFFLINE and failed to DEVICE_STATE_IN_ERROR", func() {
+			client := newTestClient(sockPath)
+			states, err := client.CollectForSlots([]string{slotOffline, slotFailed})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(2))
+			byAddr := map[string]pb.DEVICE_STATE{}
+			for _, s := range states {
+				byAddr[s.PciAddress] = s.State
+			}
+			Expect(byAddr[slotOffline]).To(Equal(pb.DEVICE_STATE_OFFLINE))
+			Expect(byAddr[slotFailed]).To(Equal(pb.DEVICE_STATE_IN_ERROR))
+		})
+
+		It("maps status na, which card management does not track, to DEVICE_STATE_UNSPECIFIED", func() {
+			client := newTestClient(sockPath)
+			states, err := client.CollectForSlots([]string{slotNA})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].State).To(Equal(pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED))
 		})
 
 		It("skips slots that return an application-level error_code", func() {

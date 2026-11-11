@@ -24,6 +24,59 @@ import (
 
 const defaultCardHealthTimeout = 10 * time.Second
 
+// Values of GetCardHealthResponse.Health sent by the aiu-cardmgmt-health-api sidecar.
+//
+// Sidecar 0.0.4 and earlier collapse the card management status into two values:
+// "healthy" (status online) and "unhealthy" (anything else).
+// Sidecar 0.0.5 and later return the card management getCardStatus() status as is
+// (PF boot status plus the privileged VF open status), or "na" when there is none.
+const (
+	healthHealthy   = "healthy"   // 0.0.4: card online
+	healthUnhealthy = "unhealthy" // 0.0.4: any other status
+
+	healthOnline      = "online"       // PF booted and privileged VF opened
+	healthOffline     = "offline"      // PF offline
+	healthFailed      = "failed"       // PF or privileged VF failed
+	healthPFQuiescing = "pf-quiescing" // PF being quiesced (card management: discovered, not yet managed)
+	healthStarting    = "starting"     // boot in progress
+	healthPFCheck     = "pfcheck"      // boot step: PF being checked
+	healthPFBooted    = "pfbooted"     // boot step: PF booted, privileged VF not yet opened
+	healthNA          = "na"           // card management has no status for the slot (reported as UNSPECIFIED)
+)
+
+// mapCardStatus converts a sidecar Health value to a device state.
+//
+// The detailed statuses of sidecar 0.0.5 and later are mapped to the closest device state:
+//
+//	online                                -> ONLINE
+//	offline                               -> OFFLINE
+//	starting, pfcheck, pfbooted           -> BOOTING
+//	pf-quiescing                          -> SHUTTING_DOWN
+//	failed                                -> IN_ERROR
+//	na (no status for the slot)           -> UNSPECIFIED
+//
+// The two values of sidecar 0.0.4 map as "healthy" -> ONLINE and "unhealthy" -> IN_ERROR (no detail).
+// Only "healthy" and "online" are ONLINE, so a card in any other state is never offered to a workload.
+// A value this version does not know is IN_ERROR.
+func mapCardStatus(health string) pb.DEVICE_STATE {
+	switch health {
+	case healthHealthy, healthOnline:
+		return pb.DEVICE_STATE_ONLINE
+	case healthOffline:
+		return pb.DEVICE_STATE_OFFLINE
+	case healthStarting, healthPFCheck, healthPFBooted:
+		return pb.DEVICE_STATE_BOOTING
+	case healthPFQuiescing:
+		return pb.DEVICE_STATE_SHUTTING_DOWN
+	case healthNA:
+		return pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED
+	case healthFailed, healthUnhealthy:
+		return pb.DEVICE_STATE_IN_ERROR
+	default:
+		return pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED
+	}
+}
+
 // CardHealthClient queries the aiu-cardmgmt-health-api sidecar via mTLS gRPC.
 type CardHealthClient struct {
 	socketPath  string
@@ -152,10 +205,7 @@ func (c *CardHealthClient) querySlot(
 		}
 		return nil, msg, nil
 	}
-	s := pb.DEVICE_STATE_IN_ERROR
-	if resp.Health == "healthy" {
-		s = pb.DEVICE_STATE_ONLINE
-	}
+	s := mapCardStatus(resp.Health)
 	if c.debug {
 		fmt.Printf("cardhealth-debug: slot %-16s  health=%-9s  state=%s\n", slot, resp.Health, s)
 	}

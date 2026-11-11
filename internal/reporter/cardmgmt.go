@@ -8,9 +8,55 @@
 package reporter
 
 import (
+	"strings"
+
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
 )
+
+// PFSlots returns the PCI addresses of the physical functions among the discovered devices.
+// Card management only tracks physical functions: for a VF slot its worker returns an empty status,
+// which the health API reports as "unhealthy". Querying VF slots would therefore mark every VF in error,
+// so only PF slots are asked.
+func PFSlots(discovered []types.DeviceState) []string {
+	slots := make([]string, 0, len(discovered))
+	for _, d := range discovered {
+		if d.Type == pb.DEVICE_TYPE_PF {
+			slots = append(slots, d.PciAddress)
+		}
+	}
+	return slots
+}
+
+// pfAddressOf returns the address of function 0 in the same PCI slot ("0000:3b:00.2" -> "0000:3b:00.0").
+func pfAddressOf(addr string) string {
+	i := strings.LastIndex(addr, ".")
+	if i < 0 {
+		return ""
+	}
+	return addr[:i] + ".0"
+}
+
+// WithVFStates returns pfStates plus one state per discovered VF whose parent PF has a state in pfStates;
+// the VF takes the state of its PF, so the VFs of a failed card are not offered as healthy.
+// The parent is function 0 of the same PCI slot, which is how the PF and VFs of a Spyre card are laid out.
+// A VF whose PF has no state (not queried, or the query was skipped) gets none and keeps its lspci state.
+func WithVFStates(discovered, pfStates []types.DeviceState) []types.DeviceState {
+	byAddr := make(map[string]types.DeviceState, len(pfStates))
+	for _, s := range pfStates {
+		byAddr[s.PciAddress] = s
+	}
+	out := append(make([]types.DeviceState, 0, len(pfStates)+len(discovered)), pfStates...)
+	for _, d := range discovered {
+		if d.Type != pb.DEVICE_TYPE_VF {
+			continue
+		}
+		if pf, ok := byAddr[pfAddressOf(d.PciAddress)]; ok {
+			out = append(out, types.DeviceState{PciAddress: d.PciAddress, Type: pb.DEVICE_TYPE_VF, State: pf.State})
+		}
+	}
+	return out
+}
 
 // CardmgmtReporter collects device states from the card management service.
 // It carries medium priority (PriorityCardmgmt = 5).
