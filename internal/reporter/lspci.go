@@ -11,10 +11,13 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 
 	pb "github.com/ibm-aiu/spyre-health-checker/pkg/health/spyre"
 	types "github.com/ibm-aiu/spyre-health-checker/pkg/types"
@@ -42,18 +45,31 @@ func (r *LSPCIReporter) Collect() ([]types.DeviceState, error) {
 		return nil, fmt.Errorf("lspci reporter: lspci not found (%s): install lspci & pciutils: %w", pathEnv(), err)
 	}
 
-	// CombinedOutput captures stderr alongside stdout.
-	out, err := exec.Command("lspci", "-vvvnn").CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("lspci reporter: lspci -vvvnn failed: %w\noutput: %s", err, string(out))
+	// stdout and stderr are kept apart: a stderr warning merged into the output would land in front of the first
+	// device block and hide that device.
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("lspci", "-vvvnn")
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("lspci reporter: lspci -vvvnn failed: %w\noutput: %s\nstderr: %s",
+			err, stdout.String(), stderr.String())
+	}
+	if msg := strings.TrimSpace(stderr.String()); msg != "" && firstTime("stderr") {
+		lspciDebugLog("lspci wrote to stderr (not parsed): %q", clip(msg))
 	}
 
-	states := parseLSPCI(string(out))
+	states, skips := parseLSPCIWithSkips(stdout.String())
+	for _, reason := range slices.Sorted(maps.Keys(skips)) {
+		if firstTime(reason) {
+			lspciDebugLog("skipped a block (%s), first example: %q", reason, clip(skips[reason].example))
+		}
+	}
+	detail := skipSummary(skips)
 	if len(states) == 0 {
 		// Warn: distinguishes "no cards" from a format change.
-		lspciDebugLog("lspci succeeded but found no IBM Spyre devices in output (%d bytes)", len(out))
+		lspciDebugLog("lspci succeeded but found no IBM Spyre devices in output (%d bytes)%s", stdout.Len(), detail)
 	} else {
-		lspciDebugLog("lspci found %d Spyre device(s)", len(states))
+		lspciDebugLog("lspci found %d Spyre device(s)%s", len(states), detail) // detail starts with a comma or is null
 	}
 
 	stamp(states, r.Name(), r.Priority())
@@ -71,6 +87,49 @@ func pathEnv() string {
 // lspciDebugLog is a package-level hook for diagnostic output; override in tests.
 var lspciDebugLog = func(format string, args ...any) {
 	fmt.Printf("lspci-reporter: "+format+"\n", args...)
+}
+
+// Spyre blocks that do not become a device are counted per reason (summary in the log line of a run); the first
+// example of each reason is logged once.
+const (
+	skipNoHeader = "no-header" // mentions Spyre, but has no parsable device header
+	skipRev01    = "rev-01"    // Spyre device with revision 01, which is ignored
+)
+
+type skipInfo struct {
+	count   int
+	example string
+}
+
+// skipSummary returns ", skipped N (reason: n, ...)", or "" when nothing was skipped.
+func skipSummary(skips map[string]skipInfo) string {
+	if len(skips) == 0 {
+		return ""
+	}
+	total := 0
+	parts := make([]string, 0, len(skips))
+	for _, reason := range slices.Sorted(maps.Keys(skips)) {
+		total += skips[reason].count
+		parts = append(parts, fmt.Sprintf("%s: %d", reason, skips[reason].count))
+	}
+	return fmt.Sprintf(", skipped %d (%s)", total, strings.Join(parts, ", "))
+}
+
+// lspciLogged remembers which conditions were logged, so a recurring one appears once per process.
+var lspciLogged sync.Map
+
+func firstTime(condition string) bool {
+	_, seen := lspciLogged.LoadOrStore(condition, struct{}{})
+	return !seen
+}
+
+const maxLogText = 160 // longest piece of lspci output copied into a log line
+
+func clip(s string) string {
+	if len(s) <= maxLogText {
+		return s
+	}
+	return s[:maxLogText] + "..."
 }
 
 // ---------------------------------------------------------------------------
@@ -203,24 +262,54 @@ func parseDetails(stanza string, di *deviceInfo) {
 
 // Parse device stanza
 
-func parseDeviceStanza(stanza string) deviceInfo {
-	var di deviceInfo
+type lspciHeader struct{ line, pci, vendev, rev string }
 
-	firstLine := firstNonEmptyLine(stanza)
-	pci, vendev, rev, ok := parseHeader(firstLine)
-	if !ok || rev == "01" {
-		return di
+// findHeader returns the first column-0 line of a block that parses as a device header. Text in front of it
+// (for example stderr merged into the output) is ignored, so it cannot hide the device.
+func findHeader(stanza string) (lspciHeader, bool) {
+	for _, line := range strings.Split(stanza, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" || line[0] == ' ' || line[0] == '\t' {
+			continue
+		}
+		if pci, vendev, rev, ok := parseHeader(line); ok {
+			return lspciHeader{line: line, pci: pci, vendev: vendev, rev: rev}, true
+		}
 	}
-	if len(pci) == 7 {
-		di.PCIAddress = "0000:" + pci
+	return lspciHeader{}, false
+}
+
+// mentionsSpyre reports whether text names a Spyre device or one of its PCI IDs.
+func mentionsSpyre(s string) bool {
+	l := strings.ToLower(s)
+	return strings.Contains(l, "spyre") || strings.Contains(l, pfVDID) || strings.Contains(l, vfVDID)
+}
+
+// parseDeviceStanza parses one block. A Spyre block that is skipped comes back with its reason and an example line.
+func parseDeviceStanza(stanza string) (di deviceInfo, skip, example string) {
+	head, ok := findHeader(stanza)
+	if !ok {
+		if mentionsSpyre(stanza) {
+			return di, skipNoHeader, firstNonEmptyLine(stanza)
+		}
+		return di, "", ""
+	}
+	if head.rev == "01" { // revision 01 devices have always been ignored
+		if mentionsSpyre(head.line) {
+			return di, skipRev01, head.line
+		}
+		return di, "", ""
+	}
+	if len(head.pci) == 7 {
+		di.PCIAddress = "0000:" + head.pci
 	} else {
-		di.PCIAddress = pci
+		di.PCIAddress = head.pci
 	}
-	di.VenDevID = strings.ToLower(vendev)
-	di.Revision = strings.ToLower(rev)
+	di.VenDevID = strings.ToLower(head.vendev)
+	di.Revision = strings.ToLower(head.rev)
 
 	parseDetails(stanza, &di)
-	return di
+	return di, "", ""
 }
 
 func firstNonEmptyLine(s string) string {
@@ -238,9 +327,25 @@ const (
 )
 
 func parseLSPCI(output string) []types.DeviceState {
+	states, _ := parseLSPCIWithSkips(output)
+	return states
+}
+
+// parseLSPCIWithSkips also returns the Spyre blocks that were skipped, per reason.
+func parseLSPCIWithSkips(output string) ([]types.DeviceState, map[string]skipInfo) {
 	states := make([]types.DeviceState, 0)
+	skips := map[string]skipInfo{}
 	for _, dev := range splitByBlankLines(output) {
-		di := parseDeviceStanza(dev)
+		di, reason, example := parseDeviceStanza(dev)
+		if reason != "" {
+			s := skips[reason]
+			if s.count == 0 {
+				s.example = example
+			}
+			s.count++
+			skips[reason] = s
+			continue
+		}
 		if di == (deviceInfo{}) {
 			continue
 		}
@@ -271,5 +376,5 @@ func parseLSPCI(output string) []types.DeviceState {
 			State:      state,
 		})
 	}
-	return states
+	return states, skips
 }
