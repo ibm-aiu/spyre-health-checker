@@ -47,6 +47,21 @@ devices, and classifies each:
 | Revision == `ff` | `DEVICE_STATE_IN_ERROR` |
 | All other revisions | `DEVICE_STATE_ONLINE` |
 
+Only the standard output of `lspci` is parsed. Anything `lspci` writes on standard error (for example a
+permission or database warning) is kept apart and logged once per process, so it cannot be mistaken for the start
+of a device block. The device header of a block is the first line that starts in column 0 and has the form
+`<address> <description> [vendor:device] (rev NN)`; text in front of it is ignored.
+
+A block that concerns a Spyre device but is not turned into a device is counted in the log line of every run
+(`lspci found 3 Spyre device(s), skipped 1 (no-header: 1)`), and the first example of each reason is logged once:
+
+| Reason | Meaning |
+|---|---|
+| `no-header` | the block mentions Spyre or a Spyre PCI ID but has no parsable device header |
+| `rev-01` | a Spyre device with revision `01`, which is ignored |
+
+Blocks of other devices are ignored without a report.
+
 After all reporters run, `healthcheck.go` additionally checks the kernel driver
 symlink at `/sys/bus/pci/devices/<pciAddress>/driver` for each non-pseudo device.
 If `os.Stat()` fails or times out (5 s), the device is forced to
