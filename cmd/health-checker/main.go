@@ -117,6 +117,12 @@ var (
 		getEnvOrDefault("CARDHEALTH_GRPC_SOCKET", "/var/run/cardmgmt-health-check-api/health-check-api.sock"),
 		"UNIX socket path for the aiu-cardmgmt-health-api sidecar (can be set via CARDHEALTH_GRPC_SOCKET env var)",
 	)
+	cardHealthNAState = flag.String(
+		"cardhealth-na-state",
+		getEnvOrDefault("CARDHEALTH_NA_STATE", reporter.NALspci),
+		"Slot with status na (no entry in card management): lspci (leave it to the other reporters) or "+
+			"unspecified (report UNSPECIFIED, not offered) (can be set via CARDHEALTH_NA_STATE env var)",
+	)
 	cardHealthServerName = flag.String(
 		"cardhealth-server-name",
 		getEnvOrDefault("CARDHEALTH_TLS_SERVER_NAME", "spyre-components"),
@@ -141,6 +147,10 @@ func main() {
 	}
 
 	cardHealthClient := reporter.NewCardHealthClient(*cardHealthSocket, *tlsCert, *tlsKey, *tlsCA, *cardHealthServerName)
+	if err := cardHealthClient.SetNAState(*cardHealthNAState); err != nil {
+		logger.Fatalf("cardhealth-na-state: %v", err)
+	}
+	logger.Infof("cardmgmt reporter: slots with status na: %s", *cardHealthNAState)
 	if *debug {
 		cardHealthClient.SetDebug(true)
 		logger.Infof("cardmgmt reporter: per-slot debug logging enabled")

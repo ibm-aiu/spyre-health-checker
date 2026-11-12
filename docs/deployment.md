@@ -113,6 +113,9 @@ containers:
     args:
       - --enabled-reporters=lspci,cardmgmt
       - --cardhealth-socket=/var/run/cardmgmt-health-check-api/health-check-api.sock
+      # Optional: slots card management does not know (status na) are left to lspci (default);
+      # "unspecified" reports them UNSPECIFIED. Env: CARDHEALTH_NA_STATE.
+      # - --cardhealth-na-state=lspci
       # TLS flags apply to both Channel A (this server) and Channel B (sidecar client).
       # The default paths below match the volumeMount; override with SPYRE_TLS_* env vars
       # if you prefer not to use args.

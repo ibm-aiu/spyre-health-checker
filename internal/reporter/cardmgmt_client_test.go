@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -118,11 +119,28 @@ var _ = Describe("mapCardStatus", func() {
 		Entry("boot step pfbooted", "pfbooted", pb.DEVICE_STATE_BOOTING),
 		Entry("pf-quiescing", "pf-quiescing", pb.DEVICE_STATE_SHUTTING_DOWN),
 		Entry("failed", "failed", pb.DEVICE_STATE_IN_ERROR),
-		Entry("na", "na", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
 		Entry("an unknown value", "something-new", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
 		Entry("an empty value", "", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
 		Entry("a value with other case (Online)", "Online", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
 	)
+})
+
+var _ = Describe("SetNAState", func() {
+	It("accepts lspci and unspecified in any case", func() {
+		c := NewCardHealthClient("", "", "", "", "")
+		for _, v := range []string{"lspci", "unspecified", " LSPCI ", "Unspecified"} {
+			Expect(c.SetNAState(v)).To(Succeed())
+		}
+	})
+
+	It("rejects other values and keeps the previous setting", func() {
+		c := NewCardHealthClient("", "", "", "", "")
+		Expect(c.SetNAState("unspecified")).To(Succeed())
+		err := c.SetNAState("online")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring(`"online"`))
+		Expect(c.naState).To(Equal(NAUnspecified))
+	})
 })
 
 var _ = Describe("CardHealthClient", func() {
@@ -187,12 +205,36 @@ var _ = Describe("CardHealthClient", func() {
 			Expect(byAddr[slotFailed]).To(Equal(pb.DEVICE_STATE_IN_ERROR))
 		})
 
-		It("maps status na, which card management does not track, to DEVICE_STATE_UNSPECIFIED", func() {
+		It("leaves slots with status na to the other reporters, and logs it once", func() {
+			var logged []string
+			saved := untrackedLog
+			untrackedLog = func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) }
+			untrackedLogged.Store(false)
+			DeferCleanup(func() { untrackedLog = saved; untrackedLogged.Store(false) })
+
 			client := newTestClient(sockPath)
-			states, err := client.CollectForSlots([]string{slotNA})
+			for i := 0; i < 3; i++ {
+				states, err := client.CollectForSlots([]string{slotHealthy, slotNA})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(states).To(HaveLen(1)) // only the tracked slot
+				Expect(states[0].PciAddress).To(Equal(slotHealthy))
+			}
+			Expect(logged).To(HaveLen(1))
+			Expect(logged[0]).To(ContainSubstring(slotNA))
+		})
+
+		It("reports slots with status na as UNSPECIFIED when the setting is unspecified", func() {
+			client := newTestClient(sockPath)
+			Expect(client.SetNAState(NAUnspecified)).To(Succeed())
+			states, err := client.CollectForSlots([]string{slotHealthy, slotNA})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(states).To(HaveLen(1))
-			Expect(states[0].State).To(Equal(pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED))
+			Expect(states).To(HaveLen(2))
+			byAddr := map[string]pb.DEVICE_STATE{}
+			for _, s := range states {
+				byAddr[s.PciAddress] = s.State
+			}
+			Expect(byAddr[slotNA]).To(Equal(pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED))
+			Expect(byAddr[slotHealthy]).To(Equal(pb.DEVICE_STATE_ONLINE))
 		})
 
 		It("skips slots that return an application-level error_code", func() {
