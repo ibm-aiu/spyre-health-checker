@@ -11,8 +11,9 @@ it can observe. Results are merged by priority (see [Reporters](reporters.md)):
 - **cardmgmt**: device is `ONLINE` if the sidecar reports `"healthy"` (sidecar 0.0.4 and
   earlier) or `"online"` (0.0.5 and later). Other statuses of sidecar 0.0.5 and later map to the
   closest state: `OFFLINE` for `offline`, `BOOTING` for `starting`, `pfcheck` and `pfbooted`,
-  `SHUTTING_DOWN` for `pf-quiescing`, `UNSPECIFIED` for `na` (no status for the slot), and `IN_ERROR`
-  for `failed`, and `DEVICE_STATE_UNSPECIFIED` for unknown values (see [Reporters](reporters.md#cardmgmt-reporter)).
+  `SHUTTING_DOWN` for `pf-quiescing`, and `IN_ERROR` for `failed`; unknown values are
+  `DEVICE_STATE_UNSPECIFIED`. `na` (no entry in card management) is no verdict: `lspci` decides for
+  the slot (see [Reporters](reporters.md#cardmgmt-reporter)).
   VFs take the state of their PF.
 - **ras**: device is `IN_ERROR` if a RAS hardware error was detected in a
   workload pod's logs on this node. This overrides any `ONLINE` from `lspci` or

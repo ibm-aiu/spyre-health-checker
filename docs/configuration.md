@@ -19,6 +19,7 @@ command line.
 | `--ras-watcher-limit-namespaces` | -- | *(empty -- all)* | Comma-separated trusted namespaces for the RAS watcher; set in multi-tenant clusters |
 | `--cardhealth-socket` | `CARDHEALTH_GRPC_SOCKET` | `/var/run/cardmgmt-health-check-api/health-check-api.sock` | UNIX socket path of the `aiu-cardmgmt-health-api` sidecar |
 | `--cardhealth-server-name` | `CARDHEALTH_TLS_SERVER_NAME` | `spyre-components` | TLS server name to verify in the cardmgmt sidecar certificate |
+| `--cardhealth-na-state` | `CARDHEALTH_NA_STATE` | `lspci` | Treatment of a slot for which card management answers `na`: `lspci` (the other reporters decide) or `unspecified` (reported `UNSPECIFIED`, not offered). Any other value stops the health checker at start |
 | `--debug` | -- | *(off)* | Enable per-slot gRPC call logging for the cardmgmt reporter (stdout) |
 
 ## Environment-only variables

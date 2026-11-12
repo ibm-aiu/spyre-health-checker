@@ -97,6 +97,10 @@ Delegates collection to an injected `CollectFn func() ([]types.DeviceState, erro
 The indirection makes the reporter testable without a live card management service.
 When `CollectFn` is nil, `Collect()` returns `nil, nil` (no-op).
 
+A slot for which card management answers `na` (no entry for it) is left out of the result by default, so the other
+reporters (lspci) decide; the first such slot per process is logged. `--cardhealth-na-state=unspecified`
+(env `CARDHEALTH_NA_STATE`) reports it as `UNSPECIFIED` instead. See [Reporters](../docs/reporters.md).
+
 Priority: `PriorityCardmgmt = 5`.
 
 ---
