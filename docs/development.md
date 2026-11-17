@@ -53,9 +53,10 @@ go test -race ./internal/utils/... -v
 | `internal/reporter` | `ras_test.go` | `RASReporter`: log scanning, SEN/RAS marker extraction, pod qualification, watch lifecycle, permission-error disable, retry loop, `Merge` integration |
 | `internal/reporter` | `cardmgmt_client_test.go` | `CardHealthClient` (mTLS): healthy/unhealthy mapping, error-code skipping, multi-slot, empty slot list, TLS cert-load failure |
 | `internal/healthcheck` | `healthcheck_test.go` | `Vitals.UpdateStates()`, `GetVitalStates()`, driver-check skips pseudo sources |
+| `internal/healthcheck` | `override_test.go` | Node health override: value parsing, missing file or directory, unreadable file, kubelet symlink swap, unsafe node names, `applyOverride`, order with the driver check |
 | `pkg/server` | `server_test.go` | gRPC streaming (pseudo devices), `UpdateHealths`, concurrent vitals access, `/healthz`, `/readyz`, `/metrics`, removed-device detection, `RegisterForSpyreDevicesEventsWithDevices` |
 | `pkg/server` | `server_suite_test.go` (mTLS table) | Accepts trusted cert, rejects no-cert client, rejects untrusted-CA cert, rejects cert with no Organisation |
-| `internal/utils` | `prometheus_test.go` | `InitMetrics`, `UpdateDeviceMetrics`, gauge labels |
+| `internal/utils` | `prometheus_test.go` | `InitMetrics`, `UpdateDeviceMetrics`, `UpdateOverrideMetric`, gauge labels |
 
 ## Pseudo device mode in tests
 

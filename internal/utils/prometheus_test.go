@@ -116,6 +116,57 @@ var _ = Describe("Prometheus metrics", func() {
 		})
 	})
 
+	Describe("UpdateOverrideMetric", func() {
+		BeforeEach(func() {
+			InitMetrics(testRegistry)
+			NodeName = "test-node"
+		})
+
+		AfterEach(func() {
+			NodeName = ""
+		})
+
+		gatherOverride := func() map[string]float64 {
+			metrics, err := testRegistry.Gather()
+			Expect(err).NotTo(HaveOccurred())
+			series := map[string]float64{}
+			for _, m := range metrics {
+				if m.GetName() != "spyre_health_override" {
+					continue
+				}
+				for _, metric := range m.GetMetric() {
+					var node, mode string
+					for _, l := range metric.GetLabel() {
+						switch l.GetName() {
+						case "node":
+							node = l.GetValue()
+						case "mode":
+							mode = l.GetValue()
+						}
+					}
+					series[node+"/"+mode] = metric.GetGauge().GetValue()
+				}
+			}
+			return series
+		}
+
+		It("exposes exactly one series, for the current mode", func() {
+			UpdateOverrideMetric("none")
+			Expect(gatherOverride()).To(Equal(map[string]float64{"test-node/none": 1}))
+
+			UpdateOverrideMetric("healthy")
+			Expect(gatherOverride()).To(Equal(map[string]float64{"test-node/healthy": 1}))
+
+			UpdateOverrideMetric("invalid")
+			Expect(gatherOverride()).To(Equal(map[string]float64{"test-node/invalid": 1}))
+		})
+
+		It("does not panic before InitMetrics was called", func() {
+			SpyreHealthOverride = nil
+			Expect(func() { UpdateOverrideMetric("healthy") }).NotTo(Panic())
+		})
+	})
+
 	Describe("UpdateDeviceMetrics", func() {
 		BeforeEach(func() {
 			InitMetrics(testRegistry)

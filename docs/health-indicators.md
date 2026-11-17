@@ -1,6 +1,6 @@
 # Indicators of Spyre card health
 
-The overall health decision for each device is built in two stages.
+The overall health decision for each device is built in three stages. The last one is optional.
 
 ## Stage 1 -- reporter pipeline
 
@@ -31,6 +31,30 @@ If `os.Stat()` fails or does not complete within 5 seconds, the device is forced
 to `DEVICE_STATE_IN_ERROR` regardless of what the reporters returned. This
 catches cards that are visible to `lspci` and the sidecar but have lost their
 kernel driver binding.
+
+## Stage 3 -- node health override (optional)
+
+An administrator can force the result for every device of a node with an entry in the optional
+ConfigMap `spyre-health-override`: the key is the node name and the value is `healthy` or `unhealthy`
+(see [Node health override](deployment.md#node-health-override)). The override is applied after
+Stage 2, to every device the reporters returned:
+
+| Value | Effect |
+|---|---|
+| `unhealthy` | every device is `IN_ERROR` |
+| `healthy` | every device is `ONLINE`, except a device that failed the driver check, which stays `IN_ERROR` |
+| anything else | ignored: the result of Stages 1 and 2 is kept, and the metric mode is `invalid` |
+
+The override is unconditional: it has no expiry and ignores what the reporters say, now or later.
+With `healthy`, keep in mind that:
+
+- it hides a RAS error but does not clear it, so the error is reported again when the entry is removed;
+- it can make workloads use a card that is not up (for example `OFFLINE` or `BOOTING`) or that has a
+  real fault.
+
+A forced device has `source="override"` in the metrics. With no ConfigMap, no entry for the node, or no
+mount, nothing changes. The design is in
+[`enhancements/node-health-override.md`](../enhancements/node-health-override.md).
 
 ## lspci filter rules (Stage 1 detail)
 

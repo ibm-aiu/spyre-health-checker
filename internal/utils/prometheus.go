@@ -18,6 +18,21 @@ import (
 // One series per device-state tuple that exists in vitals.States.
 var SpyreDeviceState *prometheus.GaugeVec
 
+// SpyreHealthOverride has exactly one series, set to 1, naming the node health override in effect.
+var SpyreHealthOverride *prometheus.GaugeVec
+
+func newHealthOverrideGauge() *prometheus.GaugeVec {
+	return prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: "spyre",
+			Name:      "health_override",
+			Help: "Node health override in effect (ConfigMap spyre-health-override): " +
+				"mode is none, healthy, unhealthy or invalid.",
+		},
+		[]string{"node", "mode"},
+	)
+}
+
 func newDeviceStateGauge() *prometheus.GaugeVec {
 	return prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -29,18 +44,22 @@ func newDeviceStateGauge() *prometheus.GaugeVec {
 	)
 }
 
+// registerGauge registers g on reg, or returns the gauge that is already registered.
+func registerGauge(reg prometheus.Registerer, g *prometheus.GaugeVec) *prometheus.GaugeVec {
+	err := reg.Register(g)
+	if err == nil {
+		return g
+	}
+	if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+		return are.ExistingCollector.(*prometheus.GaugeVec)
+	}
+	panic(err)
+}
+
 // InitMetrics registers metrics and built-in collectors on the provided Registerer.
 func InitMetrics(reg prometheus.Registerer) {
-	SpyreDeviceState = newDeviceStateGauge()
-
-	if err := reg.Register(SpyreDeviceState); err != nil {
-		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			// Reuse the one that's already registered.
-			SpyreDeviceState = are.ExistingCollector.(*prometheus.GaugeVec)
-		} else {
-			panic(err)
-		}
-	}
+	SpyreDeviceState = registerGauge(reg, newDeviceStateGauge())
+	SpyreHealthOverride = registerGauge(reg, newHealthOverrideGauge())
 
 	_ = reg.Register(collectors.NewGoCollector())
 	_ = reg.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -61,6 +80,15 @@ func UpdateDeviceMetrics(states []types.DeviceState) {
 			"source":      s.Source,
 		}).Set(1)
 	}
+}
+
+// UpdateOverrideMetric replaces the series of spyre_health_override with one series for mode.
+func UpdateOverrideMetric(mode string) {
+	if SpyreHealthOverride == nil {
+		return
+	}
+	SpyreHealthOverride.Reset()
+	SpyreHealthOverride.With(prometheus.Labels{"node": NodeName, "mode": mode}).Set(1)
 }
 
 func enumDeviceType(t pb.DEVICE_TYPE) string {

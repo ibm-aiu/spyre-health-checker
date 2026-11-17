@@ -37,6 +37,10 @@ blanks out the entire device list.
 See [`enhancements/reporter-framework.md`](../enhancements/reporter-framework.md)
 for the full design specification.
 
+The node health override is not a reporter. It is applied after `Merge()` and the driver check, because
+`Merge()` never turns an `IN_ERROR` back into `ONLINE`. See
+[Health indicators](health-indicators.md#stage-3----node-health-override-optional).
+
 ## lspci reporter
 
 Runs `lspci -vvvnn`, filters for IBM Spyre PF (`1014:06a7`) and VF (`1014:06a8`)
