@@ -17,6 +17,7 @@ command line.
 | `--tls-key` | `SPYRE_TLS_KEY` | `/etc/spyre-health-checker/certs/tls.key` | Private key for `--tls-cert` |
 | `--tls-ca` | `SPYRE_TLS_CA` | `/etc/spyre-health-checker/certs/ca.crt` | CA certificate used to verify both incoming clients (Channel A) and the cardmgmt sidecar (Channel B) |
 | `--ras-watcher-limit-namespaces` | -- | *(empty -- all)* | Comma-separated trusted namespaces for the RAS watcher; set in multi-tenant clusters |
+| `--health-override-dir` | `HEALTH_OVERRIDE_DIR` | `/etc/spyre-health-checker/override` | Directory of the optional node health override (the ConfigMap `spyre-health-override`, one file per node name). The pod reads the file `<dir>/<NODE_NAME>`; an empty value turns the feature off. See [Node health override](deployment.md#node-health-override) |
 | `--cardhealth-socket` | `CARDHEALTH_GRPC_SOCKET` | `/var/run/cardmgmt-health-check-api/health-check-api.sock` | UNIX socket path of the `aiu-cardmgmt-health-api` sidecar |
 | `--cardhealth-server-name` | `CARDHEALTH_TLS_SERVER_NAME` | `spyre-components` | TLS server name to verify in the cardmgmt sidecar certificate |
 | `--debug` | -- | *(off)* | Enable per-slot gRPC call logging for the cardmgmt reporter (stdout) |

@@ -122,6 +122,12 @@ var (
 		getEnvOrDefault("CARDHEALTH_TLS_SERVER_NAME", "spyre-components"),
 		"TLS server name for the cardmgmt sidecar certificate (can be set via CARDHEALTH_TLS_SERVER_NAME env var)",
 	)
+	healthOverrideDir = flag.String(
+		"health-override-dir",
+		getEnvOrDefault("HEALTH_OVERRIDE_DIR", "/etc/spyre-health-checker/override"),
+		"Directory of the optional node health override: the ConfigMap spyre-health-override, one file per node name "+
+			"holding healthy or unhealthy; empty turns it off (can be set via HEALTH_OVERRIDE_DIR env var)",
+	)
 )
 
 func main() {
@@ -149,6 +155,12 @@ func main() {
 	reporters := buildReporters(*enabledReporters, rasReporter, cardHealthClient)
 	logger.Infof("Enabled reporters: %v", *enabledReporters)
 	vitals := healthcheck.NewVitals(reporters)
+
+	// The override must be attached before server.NewServer, which runs the first check.
+	override := healthcheck.NewOverride(*healthOverrideDir, utils.NodeName)
+	override.SetLogger(logger)
+	vitals.SetOverride(override)
+	logger.Infof("node health override: reading %s/%s", *healthOverrideDir, utils.NodeName)
 
 	s := server.NewServer(vitals)
 	logger.Infof("Starting secure gRPC server with mTLS")
@@ -200,6 +212,7 @@ func main() {
 		s.UpdateHealths(states)
 		utils.UpdateDeviceMetrics(states)
 	}
+	utils.UpdateOverrideMetric(vitals.OverrideMode())
 
 	periodicChecksTicker := time.NewTicker(timer)
 	defer periodicChecksTicker.Stop()
@@ -211,5 +224,6 @@ func main() {
 		states := vitals.GetVitalStates()
 		s.UpdateHealths(states)
 		utils.UpdateDeviceMetrics(states)
+		utils.UpdateOverrideMetric(vitals.OverrideMode())
 	}
 }

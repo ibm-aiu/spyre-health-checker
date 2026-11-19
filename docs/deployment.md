@@ -135,6 +135,62 @@ containers:
 > Ensure the cardmgmt Pod starts (and the socket exists on the host) before
 > the health-checker Pod attempts its first collect cycle.
 
+## Node health override
+
+An administrator can force the health of every Spyre device on one node with an entry in the optional
+ConfigMap `spyre-health-override`. Create it in the namespace where the health checker runs. Each key
+is a node name, and the value is `healthy` or `unhealthy`:
+
+```bash
+# create the ConfigMap, with worker-3 forced to IN_ERROR (its devices are not offered to workloads)
+oc create configmap spyre-health-override -n <namespace> --from-literal=worker-3=unhealthy
+
+# add or change an entry: worker-5 forced to ONLINE
+oc patch configmap spyre-health-override -n <namespace> --type merge -p '{"data":{"worker-5":"healthy"}}'
+
+# remove an entry: worker-3 goes back to normal
+oc patch configmap spyre-health-override -n <namespace> --type json -p '[{"op":"remove","path":"/data/worker-3"}]'
+```
+
+- With no ConfigMap, no entry for the node, or no mount at all, nothing changes.
+- A value other than `healthy` or `unhealthy` is ignored, and the health checker logs a warning.
+- The health checker reads its entry at every check (`--timer`, 30 seconds when the operator installs
+  it). A change takes effect at the first check after kubelet has updated the mounted file, so allow a
+  couple of minutes.
+
+**Seeing the override.** The health checker logs a warning each time an override starts, changes or
+ends. The metric `spyre_health_override{node,mode}` shows the active mode (`none`, `healthy`,
+`unhealthy` or `invalid`), and the forced devices have `source="override"` in `spyre_device_state`.
+
+**Cautions.**
+
+- `healthy` has no expiry and can hide real faults. Remove the entry when the work is done, and
+  consider an alert on `mode="healthy"`.
+- Whoever can edit the ConfigMap can take a node out of service or expose faulty cards. Limit who may
+  update it.
+
+**Wiring.** The health checker DaemonSet of the operator already mounts the ConfigMap. In another
+deployment, mount it as an optional, read-only volume at `/etc/spyre-health-checker/override`. Do not
+use `subPath`: kubelet does not update a file that is mounted with it. The health checker reads the file
+named after `NODE_NAME` and needs no Kubernetes API permission for this.
+
+```yaml
+volumes:
+  - name: health-override
+    configMap:
+      name: spyre-health-override
+      optional: true
+containers:
+  - name: spyre-health-checker
+    volumeMounts:
+      - name: health-override
+        mountPath: /etc/spyre-health-checker/override
+        readOnly: true
+```
+
+See [Health indicators](health-indicators.md#stage-3----node-health-override-optional) for the exact
+rules.
+
 ## Further reading
 
 - [TLS reference](tls.md) -- certificate requirements, flag-to-file mapping,
