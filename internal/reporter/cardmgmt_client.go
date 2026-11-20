@@ -13,6 +13,9 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	cardhealth "github.com/ibm-aiu/spyre-health-checker/pkg/cardhealth"
@@ -41,7 +44,7 @@ const (
 	healthStarting    = "starting"     // boot in progress
 	healthPFCheck     = "pfcheck"      // boot step: PF being checked
 	healthPFBooted    = "pfbooted"     // boot step: PF booted, privileged VF not yet opened
-	healthNA          = "na"           // card management has no status for the slot (reported as UNSPECIFIED)
+	healthNA          = "na"           // card management has no entry for the slot
 )
 
 // mapCardStatus converts a sidecar Health value to a device state.
@@ -53,8 +56,8 @@ const (
 //	starting, pfcheck, pfbooted           -> BOOTING
 //	pf-quiescing                          -> SHUTTING_DOWN
 //	failed                                -> IN_ERROR
-//	na (no status for the slot)           -> UNSPECIFIED
 //
+// "na" (no entry in card management) is handled by querySlot; mapped here, it falls to the default: UNSPECIFIED.
 // The two values of sidecar 0.0.4 map as "healthy" -> ONLINE and "unhealthy" -> IN_ERROR (no detail).
 // Only "healthy" and "online" are ONLINE, so a card in any other state is never offered to a workload.
 // A value this version does not know is IN_ERROR.
@@ -68,14 +71,17 @@ func mapCardStatus(health string) pb.DEVICE_STATE {
 		return pb.DEVICE_STATE_BOOTING
 	case healthPFQuiescing:
 		return pb.DEVICE_STATE_SHUTTING_DOWN
-	case healthNA:
-		return pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED
 	case healthFailed, healthUnhealthy:
 		return pb.DEVICE_STATE_IN_ERROR
 	default:
 		return pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED
 	}
 }
+
+// untrackedLog is the hook for the one-time message about a slot without a card management entry; tests override it.
+var untrackedLog = func(format string, args ...any) { fmt.Printf("cardhealth: "+format+"\n", args...) }
+
+var untrackedLogged atomic.Bool
 
 // CardHealthClient queries the aiu-cardmgmt-health-api sidecar via mTLS gRPC.
 type CardHealthClient struct {
@@ -88,7 +94,13 @@ type CardHealthClient struct {
 	tlsServerName string
 	// debug enables per-slot gRPC call logging to stdout.
 	debug bool
+	// strictNA makes a slot for which card management answers "na" UNSPECIFIED (not offered).
+	// By default (false) such a slot is left to the other reporters.
+	strictNA bool
 }
+
+// StrictNAEnvKey is the environment variable that turns on strict handling of the status "na" (see ParseStrictNA).
+const StrictNAEnvKey = "CARDHEALTH_STRICT_NA"
 
 // NewCardHealthClient returns a CardHealthClient configured for mTLS.
 // tlsServerName must match a SAN/CN in the server cert.
@@ -101,6 +113,27 @@ func NewCardHealthClient(socketPath, tlsCertPath, tlsKeyPath, tlsCAPath, tlsServ
 		tlsCAPath:     tlsCAPath,
 		tlsServerName: tlsServerName,
 	}
+}
+
+// SetStrictNA sets how a slot with status "na" (no entry in card management) is treated: left to the other
+// reporters (false, the default), or reported UNSPECIFIED so that it is not offered (true).
+func (c *CardHealthClient) SetStrictNA(strict bool) {
+	c.strictNA = strict
+}
+
+// ParseStrictNA reads the value of the environment variable CARDHEALTH_STRICT_NA. An empty value is false.
+// Surrounding blanks and the case are ignored. Anything that is not a boolean is an error, so that a typo
+// does not silently select the wrong mode.
+func ParseStrictNA(value string) (bool, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return false, nil
+	}
+	strict, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("invalid value %q: want true or false", value)
+	}
+	return strict, nil
 }
 
 // SetDebug enables per-slot gRPC call logging to stdout (--debug flag).
@@ -132,7 +165,7 @@ func (c *CardHealthClient) buildMTLSCredentials() (credentials.TransportCredenti
 }
 
 // CollectForSlots queries GetCardHealth for each slot over mTLS.
-// Slots with RPC or application-level errors are skipped, not fatal.
+// Slots with RPC or application-level errors, or with no state in card management ("na"), are skipped, not fatal.
 func (c *CardHealthClient) CollectForSlots(slots []string) ([]types.DeviceState, error) {
 	creds, err := c.buildMTLSCredentials()
 	if err != nil {
@@ -155,6 +188,7 @@ func (c *CardHealthClient) CollectForSlots(slots []string) ([]types.DeviceState,
 	var (
 		firstRPCErr     error
 		firstSidecarErr string
+		untracked       int
 	)
 	states := make([]types.DeviceState, 0, len(slots))
 	for _, slot := range slots {
@@ -171,10 +205,14 @@ func (c *CardHealthClient) CollectForSlots(slots []string) ([]types.DeviceState,
 			}
 			continue
 		}
+		if state == nil {
+			untracked++
+			continue
+		}
 		states = append(states, *state)
 	}
 
-	logSkipped(len(slots), len(states), firstRPCErr, firstSidecarErr)
+	logSkipped(len(slots)-untracked, len(states), firstRPCErr, firstSidecarErr)
 
 	if c.debug {
 		fmt.Printf("cardhealth-debug: collect complete -- %d/%d slots returned a state\n",
@@ -184,8 +222,8 @@ func (c *CardHealthClient) CollectForSlots(slots []string) ([]types.DeviceState,
 	return states, nil
 }
 
-// querySlot calls GetCardHealth for a single slot and returns the DeviceState
-// on success, or a non-empty sidecarErr / non-nil error on failure.
+// querySlot calls GetCardHealth for a single slot and returns the DeviceState on success (nil when card management has
+// no state for the slot), or a non-empty sidecarErr / non-nil error on failure.
 func (c *CardHealthClient) querySlot(
 	ctx context.Context,
 	stub cardhealth.CardHealthClient,
@@ -204,6 +242,12 @@ func (c *CardHealthClient) querySlot(
 			fmt.Printf("cardhealth-debug: slot %-16s  sidecar error: %s\n", slot, msg)
 		}
 		return nil, msg, nil
+	}
+	if resp.Health == healthNA && !c.strictNA { // no entry in card management: the other reporters decide
+		if untrackedLogged.CompareAndSwap(false, true) {
+			untrackedLog("slot %s has no state in card management (status na); other reporters decide", slot)
+		}
+		return nil, "", nil
 	}
 	s := mapCardStatus(resp.Health)
 	if c.debug {

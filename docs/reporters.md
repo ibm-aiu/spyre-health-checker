@@ -99,20 +99,29 @@ generations of the sidecar are supported:
 | `pfbooted` | 0.0.5 and later | boot step: PF booted, privileged VF not yet opened | `BOOTING` |
 | `pf-quiescing` | 0.0.5 and later | PF being quiesced | `SHUTTING_DOWN` |
 | `failed` | 0.0.5 and later | PF or privileged VF failed | `IN_ERROR` |
-| `na` | 0.0.5 and later | card management has no status for the slot | `UNSPECIFIED` |
+| `na` | 0.0.5 and later | card management has no entry for the slot | slot skipped; the other reporters decide (`CARDHEALTH_STRICT_NA=true`: `UNSPECIFIED`) |
 | any other value | -- | not known to this version | `UNSPECIFIED` |
 
 Only `healthy` and `online` are `ONLINE`: a card that is not fully up is never offered to a
 workload, whichever of the other states it is in. `RUNNING_DIAGNOSTICS` is not produced by this
 reporter because card management does not report a matching status. `REMOVED` is set by the health
-checker itself when a device disappears. A slot whose call fails (RPC or sidecar error code) is
-skipped: the other reporters decide for it.
+checker itself when a device disappears. A slot whose call fails (RPC or sidecar error code), and a
+slot with status `na`, is skipped: the other reporters decide for it, so a card is not withdrawn only
+because card management does not cover it. `na` is the answer for a card that card management has not
+discovered or excludes by its filter, and for every slot from a card management that predates DRA
+(it finds cards through the node's allocatable resources, which stay empty in DRA mode). The first
+such slot per process is logged. Setting the environment variable `CARDHEALTH_STRICT_NA=true` (for example through
+`spec.healthChecker.env` of the SpyreClusterPolicy) reports such a slot as `UNSPECIFIED` instead, so that it is not
+offered. `UNSPECIFIED` means "not known", not a fault: it is not `IN_ERROR` (see
+[Health indicators](health-indicators.md#unspecified-is-not-in_error)). A value that is not a boolean stops the
+health checker at start.
 
 **Flags / environment variables:**
 
 | Flag | Env var | Default | Description |
 |---|---|---|---|
 | `--cardhealth-socket` | `CARDHEALTH_GRPC_SOCKET` | `/var/run/cardmgmt-health-check-api/health-check-api.sock` | UNIX socket path of the sidecar |
+| -- | `CARDHEALTH_STRICT_NA` | `false` | `true`: a slot with status `na` is reported `UNSPECIFIED` (not offered). `false`: the other reporters decide for it |
 | `--tls-cert` | `SPYRE_TLS_CERT` | `/etc/spyre-health-checker/certs/tls.crt` | Client certificate presented to the sidecar (same cert used for Channel A) |
 | `--tls-key` | `SPYRE_TLS_KEY` | `/etc/spyre-health-checker/certs/tls.key` | Private key for the client certificate |
 | `--tls-ca` | `SPYRE_TLS_CA` | `/etc/spyre-health-checker/certs/ca.crt` | CA used to verify the sidecar's server certificate |

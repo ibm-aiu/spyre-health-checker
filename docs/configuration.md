@@ -27,6 +27,7 @@ command line.
 | Variable | Default | Description |
 |---|---|---|
 | `PSEUDO_DEVICE_MODE` | *(unset)* | Set to `1` to replace hardware reporters with synthetic pseudo devices (see [Reporters -- Pseudo device mode](reporters.md#pseudo-device-mode)) |
+| `CARDHEALTH_STRICT_NA` | *(unset: `false`)* | `true` makes a slot for which card management answers `na` (no entry for it) `UNSPECIFIED`, so it is not offered. By default such a slot is left to the other reporters. Any value that is not a boolean stops the health checker at start. Set it with `spec.healthChecker.env` (see [Reporters](reporters.md#cardmgmt-reporter)) |
 | `NODE_NAME` | *(must be set in-cluster)* | Node name injected via the Kubernetes downward API; used by the RAS pod watcher to filter pods to the local node |
 
 ## Further reading

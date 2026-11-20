@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -118,10 +119,38 @@ var _ = Describe("mapCardStatus", func() {
 		Entry("boot step pfbooted", "pfbooted", pb.DEVICE_STATE_BOOTING),
 		Entry("pf-quiescing", "pf-quiescing", pb.DEVICE_STATE_SHUTTING_DOWN),
 		Entry("failed", "failed", pb.DEVICE_STATE_IN_ERROR),
-		Entry("na", "na", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
 		Entry("an unknown value", "something-new", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
 		Entry("an empty value", "", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
 		Entry("a value with other case (Online)", "Online", pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED),
+	)
+})
+
+var _ = Describe("ParseStrictNA", func() {
+	DescribeTable("reads the value of CARDHEALTH_STRICT_NA",
+		func(value string, want bool) {
+			got, err := ParseStrictNA(value)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal(want))
+		},
+		Entry("unset or empty is off", "", false),
+		Entry("only blanks is off", "  ", false),
+		Entry("false", "false", false),
+		Entry("0", "0", false),
+		Entry("true", "true", true),
+		Entry("1", "1", true),
+		Entry("any case", "TRUE", true),
+		Entry("surrounding blanks", " True ", true),
+	)
+
+	DescribeTable("rejects anything that is not a boolean, and names the value",
+		func(value string) {
+			_, err := ParseStrictNA(value)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(value))
+		},
+		Entry("a typo", "ture"), // codespell:ignore ture
+		Entry("a state name", "unspecified"),
+		Entry("yes", "yes"),
 	)
 })
 
@@ -187,12 +216,52 @@ var _ = Describe("CardHealthClient", func() {
 			Expect(byAddr[slotFailed]).To(Equal(pb.DEVICE_STATE_IN_ERROR))
 		})
 
-		It("maps status na, which card management does not track, to DEVICE_STATE_UNSPECIFIED", func() {
+		It("leaves slots with status na to the other reporters by default, and logs it once", func() {
+			var logged []string
+			saved := untrackedLog
+			untrackedLog = func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) }
+			untrackedLogged.Store(false)
+			DeferCleanup(func() { untrackedLog = saved; untrackedLogged.Store(false) })
+
 			client := newTestClient(sockPath)
-			states, err := client.CollectForSlots([]string{slotNA})
+			for i := 0; i < 3; i++ {
+				states, err := client.CollectForSlots([]string{slotHealthy, slotNA})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(states).To(HaveLen(1)) // only the slot that card management knows
+				Expect(states[0].PciAddress).To(Equal(slotHealthy))
+			}
+			Expect(logged).To(HaveLen(1))
+			Expect(logged[0]).To(ContainSubstring(slotNA))
+		})
+
+		It("reports slots with status na as UNSPECIFIED in strict mode, without the log message", func() {
+			var logged []string
+			saved := untrackedLog
+			untrackedLog = func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) }
+			untrackedLogged.Store(false)
+			DeferCleanup(func() { untrackedLog = saved; untrackedLogged.Store(false) })
+
+			client := newTestClient(sockPath)
+			client.SetStrictNA(true)
+			states, err := client.CollectForSlots([]string{slotHealthy, slotNA})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(2))
+			byAddr := map[string]pb.DEVICE_STATE{}
+			for _, s := range states {
+				byAddr[s.PciAddress] = s.State
+			}
+			Expect(byAddr[slotNA]).To(Equal(pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED))
+			Expect(byAddr[slotHealthy]).To(Equal(pb.DEVICE_STATE_ONLINE))
+			Expect(logged).To(BeEmpty())
+		})
+
+		It("goes back to leaving slots with status na to the other reporters when strict mode is turned off", func() {
+			client := newTestClient(sockPath)
+			client.SetStrictNA(true)
+			client.SetStrictNA(false)
+			states, err := client.CollectForSlots([]string{slotHealthy, slotNA})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(states).To(HaveLen(1))
-			Expect(states[0].State).To(Equal(pb.DEVICE_STATE_DEVICE_STATE_UNSPECIFIED))
 		})
 
 		It("skips slots that return an application-level error_code", func() {
