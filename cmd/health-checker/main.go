@@ -147,6 +147,18 @@ func main() {
 	}
 
 	cardHealthClient := reporter.NewCardHealthClient(*cardHealthSocket, *tlsCert, *tlsKey, *tlsCA, *cardHealthServerName)
+	strictNA, err := reporter.ParseStrictNA(os.Getenv(reporter.StrictNAEnvKey))
+	if err != nil {
+		logger.Fatalf("%s: %v", reporter.StrictNAEnvKey, err)
+	}
+	cardHealthClient.SetStrictNA(strictNA)
+	if strictNA {
+		logger.Infof("cardmgmt reporter: %s=true: a slot with status na is reported UNSPECIFIED and not offered",
+			reporter.StrictNAEnvKey)
+	} else {
+		logger.Infof("cardmgmt reporter: a slot with status na is left to the other reporters (%s is not true)",
+			reporter.StrictNAEnvKey)
+	}
 	if *debug {
 		cardHealthClient.SetDebug(true)
 		logger.Infof("cardmgmt reporter: per-slot debug logging enabled")
