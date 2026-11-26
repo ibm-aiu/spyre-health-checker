@@ -4,8 +4,8 @@
 
 ## Overview
 
-An administrator can force the reported health of every Spyre device on a node by adding one entry
-to a ConfigMap:
+An administrator can force the reported health of every Spyre device on a node, or of single cards
+(a PF and its VFs) on it, by adding one entry to a ConfigMap:
 
 ```bash
 # force every Spyre device on worker-3 to IN_ERROR (not offered to workloads)
@@ -15,6 +15,9 @@ oc create configmap spyre-health-override -n <operator-namespace> --from-literal
 oc patch configmap spyre-health-override -n <operator-namespace> \
   --type merge -p '{"data":{"worker-5":"healthy"}}'
 
+# force two cards on worker-6 (the value is a file with one "<PF address> <value>" line per card)
+oc set data configmap/spyre-health-override -n <operator-namespace> --from-file=worker-6=worker-6.txt
+
 # back to normal for worker-3
 oc patch configmap spyre-health-override -n <operator-namespace> \
   --type json -p '[{"op":"remove","path":"/data/worker-3"}]'
@@ -23,7 +26,8 @@ oc patch configmap spyre-health-override -n <operator-namespace> \
 The ConfigMap is mounted into the health checker pods as a read-only volume. The health checker on
 each node reads the file named after its own node, applies the override to the merged result of the
 reporters, and publishes it through the existing gRPC stream and metrics. The device plugin and the
-DRA driver need no code change: they see ordinary state changes.
+DRA driver need no code change: they see ordinary state changes. The states stay `ONLINE` and
+`IN_ERROR`; a forced device is told apart by `source="override"` in the metrics.
 
 ## Motivation
 
@@ -52,16 +56,57 @@ Alternatives considered:
 ConfigMap `spyre-health-override` in the operator namespace. One key per node, named exactly like
 the node (a node name is a valid ConfigMap key). The operator never creates, changes or deletes it.
 
-| Value of the key `<node name>` | Effect on that node |
-|---|---|
-| no such key, or no ConfigMap | none |
-| `unhealthy` | every device reported on the node becomes `IN_ERROR` |
-| `healthy` | every device reported on the node becomes `ONLINE` |
-| anything else | ignored, as if absent, and flagged as invalid (see Failure handling) |
+A PCI address is not a valid ConfigMap key (keys allow only letters, digits, `-`, `_` and `.`; checked
+with `oc create configmap --dry-run=client`), so the per-device entries are lines in the value of the
+node's key. The value is text, one line each:
 
-Surrounding whitespace and a trailing newline are ignored, and the value is case-insensitive; the
-documentation uses lower case. The scope is the whole node. Both values are unconditional: no expiry and no
-time filter, whatever the detectors say now or later.
+| Line in the value of `<node name>` | Effect |
+|---|---|
+| `unhealthy` or `all unhealthy` | every device reported on the node becomes `IN_ERROR` |
+| `healthy` or `all healthy` | every device reported on the node becomes `ONLINE` |
+| `<PF address> unhealthy` | the PF and its VFs become `IN_ERROR` |
+| `<PF address> healthy` | the PF and its VFs become `ONLINE` |
+| `<VF address> ...` | refused: skipped with a warning that names the PF; the VF follows its PF's line or the whole-node line |
+| blank, or text after `#` | ignored |
+| anything else | skipped with a warning; the other lines still apply |
+
+The bare words `healthy` and `unhealthy` are the form that the first version accepted, so existing
+entries keep working. With no such key, or no ConfigMap, nothing changes.
+
+Rules:
+
+- **Precedence:** a line for a card wins over the line for the whole node. If a target appears twice,
+  the last line counts.
+- **Address form:** the full form that the reporters publish, `dddd:bb:ss.f` (four-digit domain, function
+  0 to 7), in either case. A short form such as `1a:00.0` is refused rather than guessed, because
+  lspci prints short addresses and a mismatch would silently do nothing.
+- **A line names a PF and covers the PF and its VFs.** The VFs of a PF are the reported VFs in the same
+  PCI slot (function 0 is the PF), by `reporter.PFAddressOf`, which is also how the cardmgmt reporter
+  gives VFs the state of their PF, so the two rules cannot drift apart. It is a rule on the address, with
+  no sysfs lookup (`physfn`), so it works the same in tests and on a node.
+  Why a line covers the VFs: the health checker does not always copy a PF failure to its VFs (a RAS error
+  is recorded for one address only, lspci and the driver check judge each function alone), while the
+  device plugin does copy it and the DRA driver was not seen to. Naming the PF makes the three agree for
+  the administrator's decision.
+- **A line for a VF is refused**, with a warning that names the PF (or says the VF has no PF). The VF
+  follows its PF's line or the whole-node line.
+- **The function number decides, not the reported type.** Function 0 of a slot is the card and every
+  other function is one of its VFs, even when a reporter typed it as a PF: the RAS reporter gives every
+  address it records the type PF, and a RAS error that replaces a VF's lspci state brings that type
+  with it. Without this rule a line for the PF would not reach such a VF, which is the case where a
+  false RAS error needs clearing. Allowing VF lines later would break nobody; refusing
+  them later would, so they start refused.
+- **Isolated VFs are out of scope.** A VF that has no PF in its slot (function 0, as in the s390x
+  layout) cannot be named. Only the whole-node lines reach it.
+- **Never adds a device:** a line for a card that no reporter returned (neither the PF nor one of its
+  VFs) is skipped with a warning. A line is used when the PF is missing but one of its VFs is reported.
+- **Whitespace and case:** blanks, tabs, `\r\n` and a missing final newline are accepted; words are
+  case-insensitive. The documentation uses lower case.
+- **Unconditional:** both values have no expiry and no time filter, whatever the detectors say now or
+  later.
+- **YAML is avoided on purpose:** an unquoted `0000:10:00.0` is read as the number 600 by a YAML 1.1
+  parser (seen with Ruby's Psych). A line format has no such trap, and `oc create configmap
+  --from-file` stores it as a block value.
 
 ## Where it applies
 
@@ -73,6 +118,11 @@ Merge(reporters)  ->  updateDriverStatus  ->  applyOverride  ->  published
 
 - `Merge` cannot do this: an `IN_ERROR` is never turned back to `ONLINE`, and no priority beats RAS
   (10). The override is a separate step that rewrites the merged result.
+- When a reporter fails, the override is still applied: `UpdateStates()` publishes a result anyway (the
+  partial one at start-up, the last complete one later) and runs the driver check and the override on
+  it. An administrator is most likely to write an override exactly when something is wrong, for
+  example while the card management sidecar is down. The remembered result is kept without the
+  override, so removing the override brings the reporters' view back.
 - The override must not hide a card that has lost its driver. The driver check therefore runs first
   and returns the devices it failed; `healthy` skips those, and `unhealthy` forces `IN_ERROR` anyway.
   The result is the same as running the override before the driver check, as first designed. The
@@ -83,6 +133,12 @@ Merge(reporters)  ->  updateDriverStatus  ->  applyOverride  ->  published
   `override` (a device that `healthy` leaves alone because of its driver keeps its own source). Only
   devices the reporters returned are rewritten; the override cannot add a card. A card that
   disappears is still marked `REMOVED` by the server.
+- The driver rule is per function: a node-wide `healthy` skips the functions without a driver quietly;
+  a function that a card line asked to make healthy but that has no driver is skipped with a warning (the
+  administrator asked for it, so the refusal is reported). A card whose PF has no driver but whose VFs do
+  gets healthy VFs and an unhealthy PF, as the driver check alone would leave them.
+- Addresses are matched in lower case on both sides, so `0000:1A:00.0` in the file finds the device
+  that a reporter published in either case.
 - `healthy` hides a RAS error, it does not clear it. The RAS error map is unchanged, so removing the
   entry brings the error back. Clearing a RAS error is the `healthy-since` work below.
 - `healthy` can send work to a card that is not up (`OFFLINE`, `BOOTING`) or has a real fault. The
@@ -113,7 +169,9 @@ Merge(reporters)  ->  updateDriverStatus  ->  applyOverride  ->  published
 - The first check runs inside `server.NewServer(vitals)`, before the RAS watcher starts in `main()`.
   It reads the file too, so a restart never publishes the detector state without the override. The
   path is therefore set on `Vitals` (for example through `NewVitals`), not started later.
-- The last value read is kept in memory, to log changes and to survive a read error.
+- The last entry read is kept in memory, to log changes and to survive a read error. A change is logged
+  when its effect changes (the text of the log line is the effect, such as `0000:41:00.0 -> ONLINE`),
+  so reformatting the file or adding a comment logs nothing.
 - A change takes effect at the next check: up to one timer interval (30 s through the operator,
   `1h` for the bare binary) after kubelet has refreshed the mounted file, which takes up to about a
   minute. Expect a couple of minutes.
@@ -125,19 +183,26 @@ Merge(reporters)  ->  updateDriverStatus  ->  applyOverride  ->  published
 | No ConfigMap, empty volume, no file for this node, or no mount at all (operator change not deployed yet) | no override (the normal case). A missing file or directory means "absent", never an error |
 | A file that was there is gone (entry or ConfigMap removed) | the override ends at the next check; the last value is **not** kept |
 | `NODE_NAME` unset or unusable | feature off, one warning |
-| File exists but cannot be read | keep the last value, warn once per error |
-| Invalid value | ignore it, log one warning per change, set the metric mode to `invalid`; never exit (the value changes at runtime and a crash loop would cut off all health reporting for the node) |
+| File exists but cannot be read | keep the last entry, warn once per error |
+| A line that cannot be used (typo, short address, unknown word) | skip that line, apply the others, warn once per line, count it in `mode="ignored"`; never exit (the value changes at runtime and a crash loop would cut off all health reporting for the node) |
+| A line for an address no reporter returned, or `healthy` for a device without a driver | skip that line, warn once, count it in `mode="ignored"`. The warning is logged again if the problem goes away and comes back |
+| A file with a very large number of bad lines | the first 10 are listed in the log, followed by one line that says more were skipped; all are counted |
 
 No Kubernetes API access is involved, so there are no `403` or watch-reconnect cases.
 
 ## Making it hard to forget
 
-- A `WARN` log line when the override is applied, changed or removed, with the node, the value and
-  the device count.
-- Gauge `spyre_health_override{node, mode}`: one series set to 1, `mode` one of
-  `none|healthy|unhealthy|invalid`.
+- A `WARN` log line when the override is applied, changed or removed, naming the effect (for example
+  `every device -> ONLINE, 0000:41:00.0 and its VFs -> IN_ERROR`).
+- Gauge `spyre_health_override{node, mode}`: three series that always exist. `mode="healthy"` and
+  `mode="unhealthy"` hold the number of devices forced to that state, and `mode="ignored"` holds the
+  number of lines that could not be used plus the devices that a `healthy` line could not be applied to
+  (no driver). All zero means no override. This replaces the first
+  version's single series (value 1, `mode` one of `none|healthy|unhealthy|invalid`), which cannot say
+  "two devices healthy, one unhealthy". The change is safe because the first version is not in a
+  release yet.
 - The per-device series carry `source="override"`.
-- The admin guide suggests an alert on `mode="healthy"` lasting longer than a chosen time.
+- The admin guide suggests an alert on `mode="healthy"` above 0 for longer than a chosen time.
 
 ## Security
 
@@ -184,7 +249,13 @@ A dashboard panel and alert rules for the `spyre_health_override` gauge are desc
 - **Timestamps on every recorded event.** For RAS, the evidence time must come from the pod (the
   container's `finishedAt`), not `time.Now()`: the watcher re-scans pods on every event and after a
   restart, so a `now()` stamp would make old errors look new.
-- **Per card**: entries listing PCI addresses.
+- **Lines for VFs and for isolated VFs**: refused today. Accepting a VF line as an exception to its PF's
+  line, or a line for a VF without a PF, would not break existing entries.
+- **A sysfs-based PF/VF relation (`physfn`)** instead of the address rule, if a layout ever breaks the
+  rule. The device plugin uses `physfn`.
+- **Distinct states for "marked" devices** (`ONLINE_OVERRIDE` / `IN_ERROR_OVERRIDE`, or an additive
+  field on the gRPC `Device`): see the second change in the same area. The consumers treat only
+  `ONLINE` as healthy, so a new value must not reach them before they are updated.
 - **RAS errors forgotten once the failing pod is gone.**
 - **`SpyreClusterPolicy` field** that the operator renders into this ConfigMap. The operator would
   then own the ConfigMap, and manual edits would be overwritten.
@@ -201,15 +272,41 @@ A dashboard panel and alert rules for the `spyre_health_override` gauge are desc
 
 ## Tests
 
-- Value parsing: absent, both values in any case, surrounding whitespace and newline, empty, unknown.
-- Apply: both modes over every state, PFs and VFs, `Source` and type kept, `REMOVED` unaffected.
-- Order: `healthy` plus a missing driver gives `IN_ERROR` (a device that cannot exist in sysfs is
-  used for this); pseudo devices are overridden like any other.
-- File reader with a temporary directory: missing directory, missing file, unreadable file keeps the
-  last value, file replaced by symlink swap (as kubelet does), invalid value reported.
-- Startup: the first published state (from `NewServer`) already includes the override.
-- Logging: the WARN line is written when the value changes, not on every check.
-- Metric: one series, correct mode.
+All in `internal/healthcheck/override_test.go`, plus the metric in `internal/utils/prometheus_test.go`
+and the shared PF rule in `internal/reporter/cardmgmt_vf_test.go`.
+
+- **Parsing** (`parseEntry`): bare value, `all <value>`, one line per card, address in either case,
+  node line together with card lines, comments, blank lines, tabs, `\r\n`, no final newline, empty
+  and comment-only files, the last line winning, ten kinds of bad line (typo, boolean, missing value,
+  unknown word, short address, wrong function, trailing dot, wildcard, three words, `all` alone) that
+  are skipped without losing the lines around them, a very long line, and the cap on listed problems.
+- **Apply** (`applyOverride`): node-wide `healthy` and `unhealthy` over every state; a PF line that
+  covers the PF and its VFs and nothing else; the VFs of another PF untouched; a PF line that still
+  reaches its VFs when the PF itself is not reported; a card line beating the node line in both
+  directions; a VF line refused (with the PF named), the VF following its PF's line or the node line; a
+  VF without a PF that no line can name but the node line reaches; a device of unspecified type reached
+  by its own address; case-insensitive matching; a missing driver on a PF, on a VF and node-wide (the
+  driver is judged per function); a line for a card nobody reported (reported, never added); an empty
+  entry; an empty device list.
+- **File reader** with a temporary directory: missing directory, missing file, another node's file,
+  the feature switched off, a read error keeps the previous entry once, file replaced by a symlink swap
+  (as kubelet does), unsafe node names.
+- **Logging** (`Override.Apply`): the start, change and end of an override are logged once; a file
+  change with the same effect logs nothing; each problem is logged once and again if it returns.
+- **`Vitals.UpdateStates` with a failing reporter** (`updatestates_test.go`): the partial result at
+  start-up, the last complete result while running, the way back when the reporter returns, an
+  override written, changed and removed while a reporter is down, the driver check on both results,
+  and the remembered result not being changed by the override.
+- **`Vitals.UpdateStates`** with the pseudo reporter, on the amd64 layout (a PF with two VFs) and the
+  s390x layout (isolated VFs): no override, node-wide both ways, one card changed with its VFs and the
+  rest as the reporter said, a refused VF line, an isolated VF reachable only by the node line, return
+  to the reporters' states when the entry is removed, a bad line next to a good one, and a device without
+  a driver (a real sysfs check) with both the node line and the card line.
+- **Metric**: three series always present, the numbers replaced at every update, no panic before
+  `InitMetrics`.
+
+Not covered by a test: the first state published by `server.NewServer` including the override. The
+order in `main()` (override attached before `NewServer`) is checked by reading the code only.
 
 ## Documentation to update with the code
 

@@ -150,20 +150,28 @@ var _ = Describe("Prometheus metrics", func() {
 			return series
 		}
 
-		It("exposes exactly one series, for the current mode", func() {
-			UpdateOverrideMetric("none")
-			Expect(gatherOverride()).To(Equal(map[string]float64{"test-node/none": 1}))
+		It("always exposes the three series, all zero when there is no override", func() {
+			UpdateOverrideMetric(0, 0, 0)
+			Expect(gatherOverride()).To(Equal(map[string]float64{
+				"test-node/healthy": 0, "test-node/unhealthy": 0, "test-node/ignored": 0,
+			}))
+		})
 
-			UpdateOverrideMetric("healthy")
-			Expect(gatherOverride()).To(Equal(map[string]float64{"test-node/healthy": 1}))
+		It("holds the number of devices per mode, and replaces the numbers at every update", func() {
+			UpdateOverrideMetric(2, 1, 3)
+			Expect(gatherOverride()).To(Equal(map[string]float64{
+				"test-node/healthy": 2, "test-node/unhealthy": 1, "test-node/ignored": 3,
+			}))
 
-			UpdateOverrideMetric("invalid")
-			Expect(gatherOverride()).To(Equal(map[string]float64{"test-node/invalid": 1}))
+			UpdateOverrideMetric(0, 4, 0)
+			Expect(gatherOverride()).To(Equal(map[string]float64{
+				"test-node/healthy": 0, "test-node/unhealthy": 4, "test-node/ignored": 0,
+			}))
 		})
 
 		It("does not panic before InitMetrics was called", func() {
 			SpyreHealthOverride = nil
-			Expect(func() { UpdateOverrideMetric("healthy") }).NotTo(Panic())
+			Expect(func() { UpdateOverrideMetric(1, 1, 1) }).NotTo(Panic())
 		})
 	})
 

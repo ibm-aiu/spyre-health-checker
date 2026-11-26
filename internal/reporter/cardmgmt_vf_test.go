@@ -34,6 +34,17 @@ var _ = Describe("card management states for PFs and VFs", func() {
 		})
 	})
 
+	// PFAddressOf is also the rule of the node health override for the VFs of a PF.
+	DescribeTable("PFAddressOf gives function 0 of the same slot",
+		func(address, want string) { Expect(PFAddressOf(address)).To(Equal(want)) },
+		Entry("a VF", "0000:3b:00.2", "0000:3b:00.0"),
+		Entry("the first VF", "0000:3b:00.1", "0000:3b:00.0"),
+		Entry("a PF is its own PF", "0000:3b:00.0", "0000:3b:00.0"),
+		Entry("another domain", "0483:70:00.7", "0483:70:00.0"),
+		Entry("an isolated VF at function 0 is its own PF", "0001:00:00.0", "0001:00:00.0"),
+		Entry("no function at all", "0000:3b:00", ""),
+	)
+
 	Describe("WithVFStates", func() {
 		pfStates := []types.DeviceState{
 			{PciAddress: "0000:2d:00.0", Type: pb.DEVICE_TYPE_PF, State: pb.DEVICE_STATE_ONLINE},
