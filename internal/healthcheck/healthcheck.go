@@ -8,8 +8,10 @@
 package healthcheck
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,11 +21,15 @@ import (
 )
 
 type Vitals struct {
-	States       []types.DeviceState
-	mu           sync.RWMutex
-	reporters    []types.Reporter
-	override     *Override
-	overrideMode string
+	States          []types.DeviceState
+	mu              sync.RWMutex
+	reporters       []types.Reporter
+	override        *Override
+	overrideSummary OverrideSummary
+
+	// complete is the result of the last merge in which no reporter failed, as the reporters gave it:
+	// before the driver check and the override. UpdateStates falls back to it when a reporter fails.
+	complete []types.DeviceState
 }
 
 // NewVitals creates a Vitals instance with the given reporters.
@@ -33,9 +39,8 @@ func NewVitals(reporters []types.Reporter) *Vitals {
 		reporters = []types.Reporter{&reporter.LSPCIReporter{}}
 	}
 	return &Vitals{
-		States:       make([]types.DeviceState, 0),
-		reporters:    reporters,
-		overrideMode: ModeNone,
+		States:    make([]types.DeviceState, 0),
+		reporters: reporters,
 	}
 }
 
@@ -47,12 +52,12 @@ func (v *Vitals) SetOverride(o *Override) {
 	v.override = o
 }
 
-// OverrideMode returns the mode found by the last UpdateStates (ModeNone, ModeHealthy, ModeUnhealthy
-// or ModeInvalid).
-func (v *Vitals) OverrideMode() string {
+// OverrideSummary returns what the node health override did in the last UpdateStates: how many devices
+// it forced to ONLINE and to IN_ERROR, and how many lines of the entry it could not apply.
+func (v *Vitals) OverrideSummary() OverrideSummary {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return v.overrideMode
+	return v.overrideSummary
 }
 
 func (v *Vitals) GetVitalStates() []types.DeviceState {
@@ -113,26 +118,55 @@ func updateDriverStatus(states []types.DeviceState) map[string]bool {
 //
 // The steps are: merge the reporters, check the driver binding, then apply the node health override.
 // The override comes last so that it cannot hide a card that has lost its driver, and it rewrites the
-// merged result because Merge never turns an IN_ERROR back into ONLINE.
+// merged result because Merge never turns an IN_ERROR back into ONLINE. The override can name the whole
+// node or single devices (see override.go).
+//
+// When a reporter fails, Merge still returns what the others found, and UpdateStates publishes a result
+// anyway, so that one unavailable source does not blank the node. Which result depends on whether there
+// has been a complete one:
+//
+//   - After a merge in which no reporter failed, the last such result is kept. A partial result lacks
+//     what the failed reporter knew, and could report a card healthy that was reported faulty before.
+//   - Before that (at start-up, or while a reporter has never worked), the partial result is used, and
+//     it follows the working reporters at every check.
+//   - With no result at all, nothing is published and the previous states stay.
+//
+// The driver check and the override are applied to whichever result is used, so that an override
+// written while a reporter is down still takes effect. The returned error then names the failed
+// reporters and says which result was published; the states are updated all the same.
 func (v *Vitals) UpdateStates() error {
-	states, err := reporter.Merge(v.reporters)
-	if err != nil {
-		return err
-	}
-	driverFailed := updateDriverStatus(states)
+	states, mergeErr := reporter.Merge(v.reporters)
 
 	v.mu.RLock()
-	override := v.override
+	last, override := v.complete, v.override
 	v.mu.RUnlock()
-	mode := ModeNone
-	if override != nil {
-		mode = override.Read()
+
+	isComplete := mergeErr == nil
+	var fresh []types.DeviceState // this merge as the reporters gave it, kept for later failures
+	switch {
+	case isComplete:
+		fresh = slices.Clone(states)
+	case len(last) > 0:
+		states = slices.Clone(last) // the checks below change states in place
+		mergeErr = fmt.Errorf("%w; publishing the last complete result", mergeErr)
+	case len(states) > 0:
+		mergeErr = fmt.Errorf("%w; publishing the partial result", mergeErr)
+	default:
+		return mergeErr
 	}
-	applyOverride(states, mode, driverFailed)
+
+	driverFailed := updateDriverStatus(states)
+	var summary OverrideSummary
+	if override != nil {
+		summary = override.Apply(states, driverFailed)
+	}
 
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.States = states
-	v.overrideMode = mode
-	return nil
+	v.overrideSummary = summary
+	if isComplete {
+		v.complete = fresh
+	}
+	return mergeErr
 }

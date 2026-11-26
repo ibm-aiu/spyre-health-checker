@@ -18,6 +18,10 @@ it can observe. Results are merged by priority (see [Reporters](reporters.md)):
   workload pod's logs on this node. This overrides any `ONLINE` from `lspci` or
   `cardmgmt` and cannot be cleared until the health-checker restarts.
 
+If a reporter fails, the other reporters still count. At start-up their result is published as it
+is. After the first complete result, the last complete result is kept until the reporter returns
+(see [Reporters](reporters.md)). Stages 2 and 3 apply to whichever result is published.
+
 ## Stage 2 -- driver check
 
 After merging reporter results, `internal/healthcheck/healthcheck.go` verifies
@@ -34,26 +38,36 @@ kernel driver binding.
 
 ## Stage 3 -- node health override (optional)
 
-An administrator can force the result for every device of a node with an entry in the optional
-ConfigMap `spyre-health-override`: the key is the node name and the value is `healthy` or `unhealthy`
-(see [Node health override](deployment.md#node-health-override)). The override is applied after
-Stage 2, to every device the reporters returned:
+An administrator can force the result for the whole node, or for single cards, with an entry in the
+optional ConfigMap `spyre-health-override`: the key is the node name, and the value is `healthy` or
+`unhealthy`, or one line `<PF address> healthy|unhealthy` per card (see
+[Node health override](deployment.md#node-health-override)). The override is applied after Stage 2, to
+the devices that the reporters returned:
 
-| Value | Effect |
+| Line | Effect |
 |---|---|
-| `unhealthy` | every device is `IN_ERROR` |
-| `healthy` | every device is `ONLINE`, except a device that failed the driver check, which stays `IN_ERROR` |
-| anything else | ignored: the result of Stages 1 and 2 is kept, and the metric mode is `invalid` |
+| `unhealthy` or `all unhealthy` | every device is `IN_ERROR` |
+| `healthy` or `all healthy` | every device is `ONLINE`, except a device that failed the driver check, which stays `IN_ERROR` |
+| `<PF address> unhealthy` | the PF and its VFs are `IN_ERROR`; it wins over a line for the whole node |
+| `<PF address> healthy` | the PF and its VFs are `ONLINE`, except a function that failed the driver check; it wins over a line for the whole node |
+| `<VF address> ...` | refused: skipped with a warning that names the PF; the VF follows its PF's line or the whole-node line |
+| anything else | skipped, with a warning; the other lines still apply |
+
+The VFs of a PF are the reported VFs in the same PCI slot (function 0 is the PF), the same rule that the
+cardmgmt reporter uses to give VFs the state of their PF. The driver check is made for each function, so
+a VF without a driver stays `IN_ERROR` under a `healthy` line for its card. A line for a card that no
+reporter returned is skipped with a warning: the override never adds a device. A VF that has no PF cannot
+be named; only the whole-node lines reach it.
 
 The override is unconditional: it has no expiry and ignores what the reporters say, now or later.
 With `healthy`, keep in mind that:
 
-- it hides a RAS error but does not clear it, so the error is reported again when the entry is removed;
+- it hides a RAS error but does not clear it, so the error is reported again when the line is removed;
 - it can make workloads use a card that is not up (for example `OFFLINE` or `BOOTING`) or that has a
   real fault.
 
-A forced device has `source="override"` in the metrics. With no ConfigMap, no entry for the node, or no
-mount, nothing changes. The design is in
+A forced device has `source="override"` in the metrics, and `spyre_health_override` counts the forced
+devices. With no ConfigMap, no entry for the node, or no mount, nothing changes. The design is in
 [`enhancements/node-health-override.md`](../enhancements/node-health-override.md).
 
 ## lspci filter rules (Stage 1 detail)

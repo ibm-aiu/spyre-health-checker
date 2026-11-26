@@ -148,8 +148,21 @@ is recorded. `Merge` continues processing the remaining reporters and returns:
 - Partial results from successful reporters.
 - A combined error: `"merge encountered N reporter error(s): [...]"`.
 
-This means a single unavailable source never prevents the health view from being
-published.
+`Merge` itself only skips the failed reporter. What `Vitals.UpdateStates()` does with a partial
+result is a separate decision, because a partial result lacks what the failed reporter knew (card
+management may have reported a fault that lspci cannot see):
+
+| Situation | Published |
+|---|---|
+| no reporter failed | the merged result, which is also remembered as the last complete result |
+| a reporter failed, and there is a remembered complete result | the remembered result (not the partial one) |
+| a reporter failed, and nothing is remembered yet (start-up) | the partial result, recomputed at every check |
+| every reporter failed, and nothing is remembered | nothing new |
+
+The remembered result is the merge as the reporters gave it, before the driver check and the node
+health override. Both are applied again to whichever result is published, so a driver that was lost
+and an override that was written or removed meanwhile are both taken into account. The error returned
+says which of the results was published.
 
 ---
 
@@ -179,6 +192,7 @@ pkg/types/types.go       # Reporter interface, DeviceState, priority constants
 | `CollectFn` injection on `CardmgmtReporter` | Avoids hard-wiring the card management RPC; unit tests supply a simple lambda. |
 | `IN_ERROR` is sticky (cannot be cleared by a higher-priority ONLINE) | Safety-first: a hardware-detected error cannot be silently overruled by a higher-level service reporting healthy. Clearing requires an explicit operator action (e.g. `DELETE /override/<pci>`). |
 | Partial results on reporter failure | A temporarily unavailable source (e.g. card management down) should not blank out the entire device list. |
+| The last complete result wins over a partial one once there is one | A partial result can drop a fault that only the failed reporter knew, and show the card as healthy. Start-up has no complete result, so it publishes the partial one rather than nothing. |
 | Priority as an integer constant, not an enum | Keeps the interface open; future reporters can slot in at any numeric level without changing existing constants. |
 
 ---
