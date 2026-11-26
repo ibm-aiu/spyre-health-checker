@@ -31,8 +31,21 @@ reporting `ONLINE` can override it. This is intentional: a hardware error should
 require explicit operator action to clear.
 
 If a reporter's `Collect()` returns an error, it is skipped and the remaining
-reporters still contribute their results. A single unavailable source never
-blanks out the entire device list.
+reporters still contribute their results, so a single unavailable source does
+not blank out the device list. What the health checker publishes then depends on
+whether it has had a complete result (one in which no reporter failed):
+
+- **Before the first complete result** (at start-up, or while a reporter has never worked), it
+  publishes what the working reporters found, and follows them at every check. This is the only
+  way to publish anything while, for example, the card management sidecar is down.
+- **After a complete result**, it keeps publishing the last complete result for as long as a reporter
+  fails, and goes back to the merged result when the reporter returns. A partial result lacks what the
+  failed reporter knew and could show a card as healthy that was reported faulty a moment ago.
+- **With no result at all**, nothing new is published.
+
+The driver check and the node health override are applied to whichever result is published, so an
+override written while a reporter is down still takes effect. The error is logged at every check and
+says which result was published.
 
 See [`enhancements/reporter-framework.md`](../enhancements/reporter-framework.md)
 for the full design specification.

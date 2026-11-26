@@ -28,8 +28,10 @@ func PFSlots(discovered []types.DeviceState) []string {
 	return slots
 }
 
-// pfAddressOf returns the address of function 0 in the same PCI slot ("0000:3b:00.2" -> "0000:3b:00.0").
-func pfAddressOf(addr string) string {
+// PFAddressOf returns the address of function 0 in the same PCI slot ("0000:3b:00.2" -> "0000:3b:00.0"),
+// which is the PF of a VF in the layout of a Spyre card. It is also the rule that the node health override
+// uses to find the VFs of a PF, so that both agree. A function 0 returns its own address.
+func PFAddressOf(addr string) string {
 	i := strings.LastIndex(addr, ".")
 	if i < 0 {
 		return ""
@@ -51,7 +53,7 @@ func WithVFStates(discovered, pfStates []types.DeviceState) []types.DeviceState 
 		if d.Type != pb.DEVICE_TYPE_VF {
 			continue
 		}
-		if pf, ok := byAddr[pfAddressOf(d.PciAddress)]; ok {
+		if pf, ok := byAddr[PFAddressOf(d.PciAddress)]; ok {
 			out = append(out, types.DeviceState{PciAddress: d.PciAddress, Type: pb.DEVICE_TYPE_VF, State: pf.State})
 		}
 	}

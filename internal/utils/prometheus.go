@@ -18,7 +18,8 @@ import (
 // One series per device-state tuple that exists in vitals.States.
 var SpyreDeviceState *prometheus.GaugeVec
 
-// SpyreHealthOverride has exactly one series, set to 1, naming the node health override in effect.
+// SpyreHealthOverride has three series, one per mode, holding the number of devices that the node health
+// override forced to healthy and to unhealthy, and the number of lines it could not apply.
 var SpyreHealthOverride *prometheus.GaugeVec
 
 func newHealthOverrideGauge() *prometheus.GaugeVec {
@@ -82,13 +83,15 @@ func UpdateDeviceMetrics(states []types.DeviceState) {
 	}
 }
 
-// UpdateOverrideMetric replaces the series of spyre_health_override with one series for mode.
-func UpdateOverrideMetric(mode string) {
+// UpdateOverrideMetric sets the three series of spyre_health_override. All three always exist, so that an
+// alert on a value above zero needs no special case for "absent".
+func UpdateOverrideMetric(healthy, unhealthy, ignored int) {
 	if SpyreHealthOverride == nil {
 		return
 	}
-	SpyreHealthOverride.Reset()
-	SpyreHealthOverride.With(prometheus.Labels{"node": NodeName, "mode": mode}).Set(1)
+	for mode, n := range map[string]int{"healthy": healthy, "unhealthy": unhealthy, "ignored": ignored} {
+		SpyreHealthOverride.With(prometheus.Labels{"node": NodeName, "mode": mode}).Set(float64(n))
+	}
 }
 
 func enumDeviceType(t pb.DEVICE_TYPE) string {

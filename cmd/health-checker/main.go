@@ -216,14 +216,17 @@ func main() {
 
 	utils.InitMetrics(prometheus.DefaultRegisterer)
 
-	if err := vitals.UpdateStates(); err != nil {
-		logger.Warnf("Error calling initial UpdateState(): %v", err)
-	} else {
-		states := vitals.GetVitalStates()
+	updateErr := vitals.UpdateStates()
+	if updateErr != nil {
+		logger.Warnf("Error calling initial UpdateState(): %v", updateErr)
+	}
+	// UpdateStates publishes what it can even when a reporter failed, so an error alone does not mean
+	// that there is nothing to send. With no devices at all and an error, nothing is sent.
+	if states := vitals.GetVitalStates(); updateErr == nil || len(states) > 0 {
 		s.UpdateHealths(states)
 		utils.UpdateDeviceMetrics(states)
 	}
-	utils.UpdateOverrideMetric(vitals.OverrideMode())
+	updateOverrideMetric(vitals)
 
 	periodicChecksTicker := time.NewTicker(timer)
 	defer periodicChecksTicker.Stop()
@@ -235,6 +238,12 @@ func main() {
 		states := vitals.GetVitalStates()
 		s.UpdateHealths(states)
 		utils.UpdateDeviceMetrics(states)
-		utils.UpdateOverrideMetric(vitals.OverrideMode())
+		updateOverrideMetric(vitals)
 	}
+}
+
+// updateOverrideMetric publishes what the node health override did in the last check.
+func updateOverrideMetric(vitals *healthcheck.Vitals) {
+	o := vitals.OverrideSummary()
+	utils.UpdateOverrideMetric(o.Healthy, o.Unhealthy, o.Ignored)
 }
