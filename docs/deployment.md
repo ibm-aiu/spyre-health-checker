@@ -135,7 +135,7 @@ containers:
 > Ensure the cardmgmt Pod starts (and the socket exists on the host) before
 > the health-checker Pod attempts its first collect cycle.
 
-## Node health override
+## Health override
 
 An administrator can force the health of the Spyre devices on one node, or of single cards on it, with
 an entry in the optional ConfigMap `spyre-health-override`. Create it in the namespace where the
