@@ -70,6 +70,26 @@ type CardmgmtReporter struct {
 	CollectFn func() ([]types.DeviceState, error)
 }
 
+// NewCardmgmtReporter returns the card management reporter of the health checker: it asks discoverer (lspci)
+// which devices exist, then asks the sidecar through client about their PFs. VFs take the state of their PF.
+// Keeping this here, and not in main(), lets the tests run the same wiring as the binary.
+func NewCardmgmtReporter(discoverer types.Reporter, client *CardHealthClient) *CardmgmtReporter {
+	return &CardmgmtReporter{
+		CollectFn: func() ([]types.DeviceState, error) {
+			discovered, err := discoverer.Collect()
+			if err != nil || len(discovered) == 0 {
+				return nil, err
+			}
+			// Only PFs are known to card management; VFs take the state of their PF.
+			pfStates, err := client.CollectForSlots(PFSlots(discovered))
+			if err != nil {
+				return nil, err
+			}
+			return WithVFStates(discovered, pfStates), nil
+		},
+	}
+}
+
 func (r *CardmgmtReporter) Name() string  { return "cardmgmt" }
 func (r *CardmgmtReporter) Priority() int { return types.PriorityCardmgmt }
 

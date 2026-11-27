@@ -20,6 +20,7 @@ command line.
 | `--health-override-dir` | `HEALTH_OVERRIDE_DIR` | `/etc/spyre-health-checker/override` | Directory of the optional node health override (the ConfigMap `spyre-health-override`, one file per node name). The pod reads the file `<dir>/<NODE_NAME>`; an empty value turns the feature off. See [Node health override](deployment.md#node-health-override) |
 | `--cardhealth-socket` | `CARDHEALTH_GRPC_SOCKET` | `/var/run/cardmgmt-health-check-api/health-check-api.sock` | UNIX socket path of the `aiu-cardmgmt-health-api` sidecar |
 | `--cardhealth-server-name` | `CARDHEALTH_TLS_SERVER_NAME` | `spyre-components` | TLS server name to verify in the cardmgmt sidecar certificate |
+| `--cardhealth-strict-na` | `CARDHEALTH_STRICT_NA` | `false` | `true` makes a slot for which card management answers `na` (no entry for it) `UNSPECIFIED`, so it is not offered. `false`: the other reporters decide for it. The flag wins over the variable. Write `--cardhealth-strict-na=true` as one argument (see [Reporters](reporters.md#cardmgmt-reporter)). A value that is not a boolean stops the health checker at start |
 | `--debug` | -- | *(off)* | Enable per-slot gRPC call logging for the cardmgmt reporter (stdout) |
 
 ## Environment-only variables

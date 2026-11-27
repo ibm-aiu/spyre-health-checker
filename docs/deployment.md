@@ -110,6 +110,11 @@ containers:
         valueFrom:
           fieldRef:
             fieldPath: spec.nodeName   # required by the RAS pod watcher
+      # Optional: a slot that card management does not know (status na) is left to the other reporters.
+      # Set this to "true" to report it UNSPECIFIED instead, so that it is not offered. The flag
+      # --cardhealth-strict-na=true (one argument) does the same and wins over this variable.
+      # - name: CARDHEALTH_STRICT_NA
+      #   value: "true"
     args:
       - --enabled-reporters=lspci,cardmgmt
       - --cardhealth-socket=/var/run/cardmgmt-health-check-api/health-check-api.sock

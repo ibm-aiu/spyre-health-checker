@@ -51,22 +51,8 @@ func buildReporters(reporterNames string, rasReporter *reporter.RASReporter,
 		case "lspci":
 			reporters = append(reporters, &reporter.LSPCIReporter{})
 		case "cardmgmt":
-			// CollectFn: discover slots via lspci, then query the sidecar.
-			lspci := &reporter.LSPCIReporter{}
-			reporters = append(reporters, &reporter.CardmgmtReporter{
-				CollectFn: func() ([]types.DeviceState, error) {
-					discovered, err := lspci.Collect()
-					if err != nil || len(discovered) == 0 {
-						return nil, err
-					}
-					// Only PFs are known to card management; VFs take the state of their PF.
-					pfStates, err := cardHealthClient.CollectForSlots(reporter.PFSlots(discovered))
-					if err != nil {
-						return nil, err
-					}
-					return reporter.WithVFStates(discovered, pfStates), nil
-				},
-			})
+			// Discover the slots via lspci, then query the sidecar for them.
+			reporters = append(reporters, reporter.NewCardmgmtReporter(&reporter.LSPCIReporter{}, cardHealthClient))
 		}
 	}
 	if len(reporters) == 0 {
@@ -122,6 +108,13 @@ var (
 		getEnvOrDefault("CARDHEALTH_TLS_SERVER_NAME", "spyre-components"),
 		"TLS server name for the cardmgmt sidecar certificate (can be set via CARDHEALTH_TLS_SERVER_NAME env var)",
 	)
+	cardHealthStrictNA = flag.Bool(
+		reporter.StrictNAFlag,
+		false,
+		"Report a slot for which card management answers na (no entry for it) as UNSPECIFIED, so that it is not offered; "+
+			"by default the other reporters decide for it. If the flag is not given, the "+reporter.StrictNAEnvKey+
+			" environment variable decides. Write --"+reporter.StrictNAFlag+"=true or =false as one argument",
+	)
 	healthOverrideDir = flag.String(
 		"health-override-dir",
 		getEnvOrDefault("HEALTH_OVERRIDE_DIR", "/etc/spyre-health-checker/override"),
@@ -147,6 +140,24 @@ func main() {
 	}
 
 	cardHealthClient := reporter.NewCardHealthClient(*cardHealthSocket, *tlsCert, *tlsKey, *tlsCA, *cardHealthServerName)
+	strictNAGiven := false
+	flag.Visit(func(f *flag.Flag) { strictNAGiven = strictNAGiven || f.Name == reporter.StrictNAFlag })
+	if err := reporter.CheckStrayArgs(reporter.StrictNAFlag, strictNAGiven, flag.Args()); err != nil {
+		logger.Fatalf("--%s: %v", reporter.StrictNAFlag, err)
+	}
+	strictNA, strictNASource, err := reporter.ResolveStrictNA(
+		strictNAGiven, *cardHealthStrictNA, os.Getenv(reporter.StrictNAEnvKey))
+	if err != nil {
+		logger.Fatalf("%s: %v", reporter.StrictNAEnvKey, err)
+	}
+	cardHealthClient.SetStrictNA(strictNA)
+	if strictNA {
+		logger.Infof("cardmgmt reporter: strict na (from the %s): "+
+			"a slot with status na is reported UNSPECIFIED and not offered", strictNASource)
+	} else {
+		logger.Infof("cardmgmt reporter: strict na is off (%s): a slot with status na is left to the other reporters",
+			strictNASource)
+	}
 	if *debug {
 		cardHealthClient.SetDebug(true)
 		logger.Infof("cardmgmt reporter: per-slot debug logging enabled")

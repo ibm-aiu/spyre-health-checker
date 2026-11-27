@@ -11,8 +11,10 @@ it can observe. Results are merged by priority (see [Reporters](reporters.md)):
 - **cardmgmt**: device is `ONLINE` if the sidecar reports `"healthy"` (sidecar 0.0.4 and
   earlier) or `"online"` (0.0.5 and later). Other statuses of sidecar 0.0.5 and later map to the
   closest state: `OFFLINE` for `offline`, `BOOTING` for `starting`, `pfcheck` and `pfbooted`,
-  `SHUTTING_DOWN` for `pf-quiescing`, `UNSPECIFIED` for `na` (no status for the slot), and `IN_ERROR`
-  for `failed`, and `DEVICE_STATE_UNSPECIFIED` for unknown values (see [Reporters](reporters.md#cardmgmt-reporter)).
+  `SHUTTING_DOWN` for `pf-quiescing`, and `IN_ERROR` for `failed`; unknown values are
+  `DEVICE_STATE_UNSPECIFIED`. `na` (no entry in card management) is no verdict: the other reporters
+  decide for the slot, unless strict mode (`--cardhealth-strict-na` or `CARDHEALTH_STRICT_NA`) makes it
+  `UNSPECIFIED` (see [Reporters](reporters.md#cardmgmt-reporter)).
   VFs take the state of their PF.
 - **ras**: device is `IN_ERROR` if a RAS hardware error was detected in a
   workload pod's logs on this node. This overrides any `ONLINE` from `lspci` or
@@ -21,6 +23,16 @@ it can observe. Results are merged by priority (see [Reporters](reporters.md)):
 If a reporter fails, the other reporters still count. At start-up their result is published as it
 is. After the first complete result, the last complete result is kept until the reporter returns
 (see [Reporters](reporters.md)). Stages 2 and 3 apply to whichever result is published.
+### UNSPECIFIED is not IN_ERROR
+
+`UNSPECIFIED` means that the state of a device is not known: card management returned a status that this version does
+not know, or `na` in strict mode. It is not a finding that the device is faulty. `IN_ERROR` is a
+detector reporting a fault.
+
+For scheduling they are the same: the device plugin and the DRA driver offer only `ONLINE` devices. They differ in the
+metric, where `spyre_device_state` carries `state="UNSPECIFIED"` or `state="IN_ERROR"`. An alert on devices that are not
+available should therefore use `spyre_device_state{state!="ONLINE"} == 1`; `state="IN_ERROR"` alone does not match
+`UNSPECIFIED`.
 
 ## Stage 2 -- driver check
 
